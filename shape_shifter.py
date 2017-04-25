@@ -14,6 +14,10 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.'''
 
+#TO DO:
+#2. deal with blank lines
+#3. don't delete 1st line
+#4. correctly deal with parents when compartment is deleted using 'radii'
 
 #Saivardhan Mada
 #Jul 20th, 2016
@@ -29,19 +33,11 @@ ri = 2.50 #ohms-m
 cm = 0.010153 #F/m^2
 lamb = 0.1
 f = .1 #Hz
-type1 = "radii"
-
-#name of the files
-in_name = "ri04_v3.p"
-out_name = "out_" + in_name
+type1 = "ac"
 
 #dictionary to hold deleted voxels
 deleted = {}
 needtowrite = []
-
-
-# def soma(input_file, output_file, type1, RM, RI, CM, F):
-	
 
 def condenser(input_file, output_file, type1, RM, RI, CM, F):
 	comp2 = []#blank variable to hold previous compartment
@@ -190,33 +186,33 @@ def main():
 
 	#array of variables 
 	variables = [type1, rm, ri, cm, f, lamb]
-
-	#reads p file
-	input_file = open(in_name, 'r').readlines()
-	output_file = open(out_name, 'w')
-
-
+        
 	#sets up arg parser for all the variables 
 	parser = argparse.ArgumentParser()
+        parser.add_argument('--file')
 	parser.add_argument('--type', choices={'ac', 'dc', '0'}, default='radii')
 	parser.add_argument('--rm', default=rm)
 	parser.add_argument('--ri', default=ri)
 	parser.add_argument('--cm', default=cm)
 	parser.add_argument('--f', default=f)
 	parser.add_argument('--lamb', default=lamb)
-
+        
 	#takes values from arg parser and adds them to the variable array 
 	h = parser.parse_args()
+        in_name=h.file
+        out_name=h.file.split('.p')[0]+'out.p'
 	variables[0] = h.type
 	variables[1] = h.rm
 	variables[2] = h.ri
 	variables[3] = h.cm
 	variables[4] = h.f
 	variables[5] = h.lamb
-
-
+        
+	#reads p file
+	input_file = open(in_name, 'r').readlines()
+	output_file = open(out_name, 'w')
+        
 	condenser(input_file, output_file, variables[0], variables[1], variables[2], variables[3], variables[4])
-
 
 main()
 
