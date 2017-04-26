@@ -79,7 +79,7 @@ def calc_len(comp,factor):
 def write_line(out_file,deleted,comp):
 	if(deleted.has_key(comp[1])):# if voxel refers to deleted voxel change the connection to the deleted voxels connection
                 newline=comp[0]+" "+deleted[comp[1]]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
-		print('old:',comp,'deleted:',deleted[comp[1]], 'new:',newline)
+		#print('old:',comp,'deleted:',deleted[comp[1]], 'new:',newline)
 		out_file.write(newline)
 	else:
                 line=comp[0]+" "+comp[1]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
@@ -160,18 +160,19 @@ def condenser(m, type1, RM, RI, CM, F, max_len, lambda_factor):
 						x = x + float(comp[2])
 						y = y + float(comp[3])
 						z = z + float(comp[4])
-					#print(x, y, z)
-					if((x-float(comp1[2]) > 0)):
-						theta = np.arctan((y-float(comp1[3]))/(x-float(comp1[2])))
+					print('tbd',tobecondensed,'xyz',x, y, z)
+					if((x > 0)):
+						theta = np.arctan(y/x)
 					else:
 						theta = 0
-					if(math.pow((z-float(comp1[4])), 2) > 0):
-						phi = np.arctan(math.pow(((x-float(comp1[2]))**2 + (y-float(comp1[3]))**2), 1/2)/ math.pow((z-float(comp1[4])), 2))
+					if(math.pow(z, 2) > 0):
+						phi = np.arctan(math.pow((x**2 + y**2), 1/2)/ math.pow(z, 2))
 					else:
 						phi = 0
-					x = l*math.cos(theta)*math.sin(phi) + float(comp1[2])
-					y = l*math.sin(theta)*math.sin(phi) + float(comp1[3])
-					z = l*math.cos(phi) + float(comp1[4])
+					x = l*math.cos(theta)*math.sin(phi)
+					y = l*math.sin(theta)*math.sin(phi)
+					z = l*math.cos(phi)
+                                        print(x,y,z)
 					m.outfile.write(comp1[0]+" "+deleted[comp1[1]]+" "+str(x)+" "+str(y)+" "+str(z)+" "+str(r)+"\n")
 					tobecondensed = []
 					lamb_tot = 0
@@ -199,7 +200,7 @@ def main():
 	#sets up arg parser for all the variables 
 	parser = argparse.ArgumentParser()
         parser.add_argument('--file')
-	parser.add_argument('--type', choices={'ac', 'dc', '0'}, default='radii')
+	parser.add_argument('--type', choices={'ac', 'dc', '0', 'radii'}, default='radii')
 	parser.add_argument('--rm', default=rm)
 	parser.add_argument('--ri', default=ri)
 	parser.add_argument('--cm', default=cm)
