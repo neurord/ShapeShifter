@@ -16,9 +16,7 @@
 
 #TO DO:
 # test for whether absolute or relative coordinates.  If absolute - print error message (until length calculation can be updated)
-# 1. calculate new relative coordinates - perhaps use some of Sai's code from radii type
-# 2. correctly deal with parents when compartment is deleted using 'radii' (i.e., when multiple compartments in to_be_condensed array)
-# once above is done, may be able to combine radii and ac and dc, with type implicit from f (0 for dc) and radius factor (0 if must match exactly)
+# combine radii and ac and dc, with type implicit from f (0 for dc) and radius factor (0 if must match exactly)
 # deal with blank lines in .p file
 
 #Saivardhan Mada
@@ -29,9 +27,11 @@ import math
 import argparse
 import numpy as np
 
+debug=0
+info=0
+
 #dictionary to hold deleted voxels
 deleted = {}
-needtowrite = []
 
 class morph:
         def __init__(self,pfile):
@@ -70,11 +70,20 @@ def calc_lambda (type1, RM, RI, CM, F):
         else:
                 return ac_factor #used by type=radius
 
-def calc_len(comp,factor):
-        lamb = factor * math.sqrt(float(comp[5])) #calculates ac or dc lambda from compartment radius
-        #electronic length of compartment 
-        length = (math.pow(float(comp[2]),2.0)+math.pow(float(comp[3]),2.0)+math.pow(float(comp[4]),2.0))/lamb 
+def calc_length(comp):
+        x=float(comp[2])
+        y=float(comp[3])
+        z=float(comp[4])
+        length = math.sqrt(x*x+y*y+z*z)
         return length
+
+def calc_electrotonic_len(comp,factor):
+        lamb = factor * math.sqrt(float(comp[5])) #calculates ac or dc lambda from compartment radius
+        #electronic length of compartment
+        length=calc_length(comp)
+        if debug:
+                print('    calc_len comp %s lambda=%.1f len=%.3f L=%.5f' % (comp[0],lamb, length, length/lamb))
+        return length/lamb
 
 def write_line(out_file,deleted,comp):
 	if(deleted.has_key(comp[1])):# if voxel refers to deleted voxel change the connection to the deleted voxels connection
@@ -85,16 +94,51 @@ def write_line(out_file,deleted,comp):
                 line=comp[0]+" "+comp[1]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
 		out_file.write(line)
 
-def condenser(m, type1, RM, RI, CM, F, max_len, lambda_factor):
-	comp2 = []#blank variable to hold previous compartment
-	tobecondensed = []
-	future = {}
-	lamb_tot = 0
+def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
+        #first method uses mean diameter and preserves electrotonic length, slightly different total surface area
+        #diameters=[float(comp[5]) for comp in condense]
+        #dia=np.mean(diameters)
+	#l = surface_tot/(np.pi*dia)
+        #print ('mean dia: dia, l, tsa', dia, l, np.pi*dia*l, 'new Ltot', l/(lamb_factor*math.sqrt(dia)))
+        dia=math.pow(surface_tot/(Ltot*np.pi*lamb_factor),(2/3.))
+        l=surface_tot/(np.pi*dia)
+        if debug:
+                print('TSA: dia %.5f, l=%.2f tsa=%.1f Ltot=%.5f' % (dia, l, np.pi*dia*l,l/(lamb_factor*math.sqrt(dia))))
+	x = 0.0
+	y = 0.0
+	z = 0.0
+        #total distance in x, y and z.  Possibly this could be used for ac/dc type, with l = total length 
+	for comp in condense:
+		x = x + float(comp[2])
+		y = y + float(comp[3])
+		z = z + float(comp[4])
+	if debug:
+                print ('xtot %.3f ytot %.3f ztot %.3f'%(x, y, z))
+	if (x > 0) :
+		theta = np.arctan(y/x)
+	else:
+		theta = 0
+	if (x>0 or y>0 or z>0):
+		phi = np.arccos(z/math.sqrt(x*x+y*y+z*z))
+	else:
+		phi = 0
+        if debug:
+                print ('theta %.4f phi %.4f ' %(theta,phi))
+	x = np.round(l*math.cos(theta)*math.sin(phi),3)
+	y = np.round(l*math.sin(theta)*math.sin(phi),3)
+	z = np.round(l*math.cos(phi),3)
+        return str(x),str(y),str(z),str(dia)
+
+def condenser(m, type1, max_len, lambda_factor):
+	condense = []
+	Ltot = 0
 	surface_tot = 0
+        num_comps=0
 	for line in m.linelist:
 		comp1 = line.split()
+                if debug:
+                        print '**** begin', comp1[0]
 		line_num = m.linelist.index(line)
-                #print 'text',comp1, 'num',line_num
 		if(line_num <= len(m.linelist)-2):
 			comp2 = m.linelist[line_num+1].split()
                 #
@@ -114,8 +158,8 @@ def condenser(m, type1, RM, RI, CM, F, max_len, lambda_factor):
 			# calculate the lengths and check for total electronic length (len/lambda) being less then 0.1 (max_len)
 			if(comp1[5] == comp2[5] and comp2[1]==comp1[0] and comp1[0] and comp1[0] not in m.do_not_delete): # comp2 is attached to comp1 and radii are the same
                                 print 'ok to delete', comp1[0]
-                                len_comp1=calc_len(comp1,lambda_factor)
-                                len_comp2=calc_len(comp2,lambda_factor)
+                                len_comp1=calc_electrotonic_len(comp1,lambda_factor)
+                                len_comp2=calc_electrotonic_len(comp2,lambda_factor)
 				if((len_comp2+len_comp1) < max_len): #if it is less then the designated electrotonic length combine the two compartments
 					if(comp1[1] in deleted):
 						deleted[comp1[0]] = deleted[comp1[1]]
@@ -130,62 +174,55 @@ def condenser(m, type1, RM, RI, CM, F, max_len, lambda_factor):
                 ##################### type = radii condenses branches with same radius and combined electronic length < 0.1 lambda [AC], calculates new coordinates 
 		elif(type1 == "radii"): 
 			ten = .2*float(comp1[5])  #ten percent of diameter
-			#basically change this to 10% and calculate the lens again and check for electronic length being less then 
-			if(abs(float(comp1[5]) - float(comp2[5])) <= ten and comp2[1]==comp1[0] and comp1[0] not in m.do_not_delete):
-                                #if the radii are almost the same and comp2 is attached to comp1 and not in do_not_delete list
-                                len_comp1=calc_len(comp1,lambda_factor)
-                                len_comp2=calc_len(comp2,lambda_factor)
-				#print(len_comp1+len_comp2)
-				#comp1[5] = str((float(comp1[5]) + float(comp2[5]))/2.0)
-				if((len_comp2+len_comp1)+lamb_tot < max_len):#if it is less then the designated lambada value condense the branches
- 					#m.outfile.write(comp2[0]+" "+deleted[comp2[1]]+" "+comp2[2]+" "+comp2[3]+" "+comp2[4]+" "+comp2[5]+"\n")
-					lamb_tot = lamb_tot + (len_comp2+len_comp1)
-					surface_tot = surface_tot + (2* math.pi * float(comp1[5]) * (math.pow(float(comp1[2]),2.0)+math.pow(float(comp1[3]),2.0)+math.pow(float(comp1[4]),2.0)))
-					if(comp1[1] in deleted):
-						deleted[comp1[0]] = deleted[comp1[1]]
-						tobecondensed.append(comp1)
-					else:
-						deleted[comp1[0]] = comp1[1]
-								
-					#m.outfile.write(comp2[0]+" "+comp1[1]+" "+comp2[2]+" "+comp2[3]+" "+comp2[4]+" "+comp2[5]+"\n")
-				elif(comp1[1] in deleted and lamb_tot > 0):
-                                        #1st calculate length and radius of new compartment equivalent to the set of to be condensed compartments
-					l = math.pow((surface_tot * math.pow((2*RM/RI), 1/2) / (2*math.pi*lamb_tot)), (2/3))
-					r = lamb_tot*math.pow(l, 1/2)/ math.pow(2*RM/RI, .5)
-					x = 0.0
-					y = 0.0
-					z = 0.0
-                                        #total distance in x, y and z.  Possibly this could be used for ac/dc type, with l = total length 
-					for comp in tobecondensed:
-						x = x + float(comp[2])
-						y = y + float(comp[3])
-						z = z + float(comp[4])
-					print('tbd',tobecondensed,'xyz',x, y, z)
-					if((x > 0)):
-						theta = np.arctan(y/x)
-					else:
-						theta = 0
-					if(math.pow(z, 2) > 0):
-						phi = np.arctan(math.pow((x**2 + y**2), 1/2)/ math.pow(z, 2))
-					else:
-						phi = 0
-					x = l*math.cos(theta)*math.sin(phi)
-					y = l*math.sin(theta)*math.sin(phi)
-					z = l*math.cos(phi)
-                                        print(x,y,z)
-					m.outfile.write(comp1[0]+" "+deleted[comp1[1]]+" "+str(x)+" "+str(y)+" "+str(z)+" "+str(r)+"\n")
-					tobecondensed = []
-					lamb_tot = 0
-					surface_tot = 0
-				else:
-					lamb_tot = 0
-					surface_tot = 0
-					m.outfile.write(line)
+                        len_comp1=calc_electrotonic_len(comp1,lambda_factor)
+                        len_comp2=calc_electrotonic_len(comp2,lambda_factor)
+                        if len(condense):
+                                delta_rad=abs(float(condense[0][5]) - float(comp2[5]))
+                                tot_len=len_comp2+Ltot
                         else:
-                                write_line(m.outfile,deleted,comp1)
+                                delta_rad=abs(float(comp1[5]) - float(comp2[5]))
+                                tot_len=len_comp1 + len_comp2
+			if(delta_rad <= ten and comp2[1]==comp1[0] and tot_len < max_len and comp1[0] not in m.do_not_delete):
+                                #if the radii are almost the same and comp2 is attached to comp1 and not in do_not_delete list
+                                if len(condense)==0:
+                                        #if this is 1st compartment of a set, add it
+                                        condense.append(comp1)
+					Ltot = len_comp1
+                                        #surface_area=pi*diam*len, comp[5] stores diameter, not radius
+					surface_tot = math.pi * float(comp1[5]) * calc_length(comp1)
+					#if(comp1[1] in deleted):
+					#	deleted[comp1[0]] = deleted[comp1[1]]
+					#	condense.append(comp1)
+					#else:
+					#	deleted[comp1[0]] = comp1[1]
+                                #always add the 2nd compartment to set of comartments to be condensed
+                                condense.append(comp2)
+                                Ltot=Ltot+len_comp2
+                                surface_tot=surface_tot+(math.pi * float(comp2[5]) * calc_length(comp2))
+			else:
+                                if len(condense):
+                                        #cannot add any additional compartments.  Condense the set
+                                        x,y,z,dia=calc_newcomp(condense,surface_tot,Ltot,lambda_factor)
+                                        if info:
+                                                print '#######condense', condense, 'stop before', comp2[0]
+                                                print 'new: x y z',x,y,z 
+					m.outfile.write(condense[-1][0]+" "+condense[0][1]+" "+x+" "+y+" "+z+" "+dia+"\n")
+					condense = []
+					Ltot = 0
+					surface_tot = 0
+                                        num_comps=num_comps+1
+				else:
+                                        #cannot condense.  Print out comp1
+                                        if info:
+                                                print 'not condensing',len(condense),Ltot, comp1[0] 
+					Ltot = 0
+					surface_tot = 0
+			                condense = []
+					m.outfile.write(line)
+                                        num_comps=num_comps+1
+        print "finished,", num_comps, "output compartments"
 
-
-def main():
+if __name__ == '__main__':
         #set default parameters
         rm = 4.00 #ohms-m^2 
         ri = 2.50 #ohms-m
@@ -225,7 +262,6 @@ def main():
         else:
                 lambd_factor=0
         #may not need variables 1-4 once radii version fixed (or eliminated)
-	condenser(newmorph, variables[0], variables[1], variables[2], variables[3], variables[4], variables[5], lambd_factor)
+	condenser(newmorph, variables[0], variables[5], lambd_factor)
 
-main()
 
