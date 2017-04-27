@@ -16,6 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.'''
 
 #Usage: python shape_shifter.py --file 'filename.p' --type 'dc'
+#Cannot have blank lines in p file
 #type can be:
 #  'ac' combine compartments of same radius, electrotonic length not to exceed max_len * ac lambda
 #  'dc' combine compartments of same radius, electrotonic length not to exceed max_len * dc lambda
@@ -27,6 +28,7 @@
 # change info or debug (below) to get additional information while running program
 
 #TO DO:
+# fix expander to deal with branching and compartments distal the compartment that was expanded
 # test for whether absolute or relative coordinates.  If absolute - print error message (until length calculation can be updated)
 # combine radii and ac and dc, with type implicit from f (0 for dc) and radius factor (0 if must match exactly)
 #    move if type == to outside of for loop when this is done
@@ -43,8 +45,8 @@ import math
 import argparse
 import numpy as np
 
-debug=0
-info=0
+debug=1
+info=1
 
 class morph:
         def __init__(self,pfile):
@@ -180,6 +182,32 @@ def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
 	z = np.round(l*math.cos(phi),3)
         return str(x),str(y),str(z),str(dia)
 
+def subdivide_comp(comp,segs):
+        parent=[]
+        child=[]
+        newcomp=[]
+        xyz=[float(x) for x in comp[2:5]]
+        print xyz
+        for i in range(segs):
+                #initialize x,y,z to 0 0 0
+                newcomp.append(['0','0','0',comp[5]])
+                parent.append(comp[0]+str(i))
+                if i==0:
+                   child.append(comp[1])
+                else:
+                   child.append(parent[i-1])
+                if np.sum(xyz)==np.max(xyz):
+                        maxval=max(xyz)
+                        maxindex=xyz.index(maxval)
+                        comp_index=maxindex+2
+                        newcomp[i][maxindex]=str(np.round(float(comp[comp_index])/segs,5))
+                else:
+                        print "new approach needed"
+        for i in range(segs):
+                print parent[i], child[i], newcomp[i]
+        return parent,child,newcomp
+        
+
 def condenser(m, type1, max_len, lambda_factor):
 	condense = []
 	Ltot = 0
@@ -193,6 +221,21 @@ def condenser(m, type1, max_len, lambda_factor):
 		if(line_num <= len(m.linelist)-2):
 			comp2 = m.linelist[line_num+1].split()
                 #
+                if (type1 == "expand"):
+                        L_comp1=calc_electrotonic_len(comp1,lambda_factor)
+                        print "max_len", max_len, "L", L_comp1
+                        if L_comp1>max_len:
+                                segs=int(math.ceil(L_comp1/max_len))
+                                print "NO GOOD", L_comp1,segs
+                                par,chil,xyzdiam=subdivide_comp(comp1,segs)
+                                for p,c,xyzd in zip(par,chil,xyzdiam):
+                                        newline=p+'  '+c+'  '+xyzd[0]+'  '+xyzd[1]+'  '+xyzd[2]+'  '+xyzd[3]+'\n'
+                                        m.outfile.write(newline)
+                                        num_comps=num_comps+1
+                        else:
+                                m.outfile.write(line)
+                                num_comps=num_comps+1
+                                print "OK", L_comp1
                 #compare the two compartments to determine if they can be merged
                 ######## type = 1 removes 0 length compartments
 		if(type1 == "0"):
@@ -285,7 +328,7 @@ if __name__ == '__main__':
 	#sets up arg parser for all the variables 
 	parser = argparse.ArgumentParser()
         parser.add_argument('--file')
-	parser.add_argument('--type', choices={'ac', 'dc', '0', 'radii'}, default='radii')
+	parser.add_argument('--type', choices={'ac', 'dc', '0', 'radii','expand'}, default='radii')
 	parser.add_argument('--rm', default=rm)
 	parser.add_argument('--ri', default=ri)
 	parser.add_argument('--cm', default=cm)
@@ -295,20 +338,17 @@ if __name__ == '__main__':
 	#takes values from arg parser and adds them to the variable array 
 	h = parser.parse_args()
 	variables[0] = h.type
-	variables[1] = h.rm
-	variables[2] = h.ri
-	variables[3] = h.cm
-	variables[4] = h.f
-	variables[5] = h.max_len
-        
+	variables[1] = float(h.rm)
+	variables[2] = float(h.ri)
+	variables[3] = float(h.cm)
+	variables[4] = float(h.f)
+	variables[5] = float(h.max_len)
+
 	#reads p file
         newmorph=morph(h.file)
 
         #calculate lambda
-        if h.type=='ac' or h.type=='dc' or h.type=='radii':
-                lambd_factor=calc_lambda(variables[0], variables[1], variables[2], variables[3], variables[4])
-        else:
-                lambd_factor=0
+        lambd_factor=calc_lambda(variables[0], variables[1], variables[2], variables[3], variables[4])
         #may not need variables 1-4 once radii version fixed (or eliminated)
 	condenser(newmorph, variables[0], variables[5], lambd_factor)
 
