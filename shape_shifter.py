@@ -1,5 +1,6 @@
 '''<Condenses .p files of neuron traces to maintain specific lambda (ac or dc) and removes 0 length compartments.>
     Copyright (C) <2016>  <Saivardhan Mada>
+    Copyright (C) <2017>  <Avrama Blackwell>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -14,14 +15,29 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.'''
 
+#Usage: python shape_shifter.py --file 'filename.p' --type 'dc'
+#type can be:
+#  'ac' combine compartments of same radius, electrotonic length not to exceed max_len * ac lambda
+#  'dc' combine compartments of same radius, electrotonic length not to exceed max_len * dc lambda
+#  '0' just remove compartments of size 0
+#  'radii' combine compartments of similar radius (not to exceed 10% different), electrotonic length not to exceed max_len*ac lambda
+# can also specify alternative values to default rm [4], cm [0.01], ri [2.5] units are SI
+# can also specify frequency (--f) for ac lambda calculation, current default is 0.1 hz
+# can also specify maximum electrotonic length (--max_len) current default is 0.1
+# change info or debug (below) to get additional information while running program
+
 #TO DO:
 # test for whether absolute or relative coordinates.  If absolute - print error message (until length calculation can be updated)
 # combine radii and ac and dc, with type implicit from f (0 for dc) and radius factor (0 if must match exactly)
-# deal with blank lines in .p file
+#    move if type == to outside of for loop when this is done
+# deal with (recognize) blank lines in .p file
 
 #Saivardhan Mada
 #Jul 20th, 2016
-#runs using python3
+#Avrama Blackwell
+#George Mason University
+#Apr 27, 2017
+
 import sys
 import math
 import argparse
@@ -30,12 +46,11 @@ import numpy as np
 debug=0
 info=0
 
-#dictionary to hold deleted voxels
-deleted = {}
-
 class morph:
         def __init__(self,pfile):
+                #dictionary to hold number of branches of each compartment
                 self.children={}
+                #dictionary to hold deleted voxels
                 self.deleted = {}
                 self.readfile(pfile)
                 self.remove_zeros()
