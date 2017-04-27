@@ -35,6 +35,13 @@ deleted = {}
 
 class morph:
         def __init__(self,pfile):
+                self.children={}
+                self.deleted = {}
+                self.readfile(pfile)
+                self.remove_zeros()
+                self.ID_branches()
+        
+        def readfile(self,pfile):
                 self.pfile=pfile
                 linelist=open(pfile, 'r').readlines()
                 self.linelist=[line for line in linelist if (line[0] !='*' and line[0] !='/')]
@@ -43,7 +50,35 @@ class morph:
                 self.outfile = open(out_name, 'w')
                 for line in linelist[0:numheader]:
                         self.outfile.write(line)
-                self.children={}
+
+        def remove_zeros(self):
+                newlines=[]
+                for line_num,line in enumerate(self.linelist):
+		        comp1 = line.split()
+		        if(line_num <= len(self.linelist)-2):
+			        comp2 = self.linelist[line_num+1].split()
+                                #Test further, possibly modify "0" to floating point 0
+			        if(comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0" and comp1[1] != 'none'):
+                                        #if all coordinates are 0's and not soma compartment
+				        self.deleted[comp1[0]] = comp1[1]# saves into dictionary to check future voxels
+                                        if info:
+				                print "eliminate", comp1,"change child of", comp2, "to", comp1[1]
+                                                print "deleted comp dictionary", self.deleted
+                                else:
+                                        xyzd=comp1[2]+"  "+comp1[3]+"  "+comp1[4]+"  "+comp1[5]
+	                                if(self.deleted.has_key(comp1[1])):
+                                        # if voxel refers to deleted voxel change the connection to the deleted voxels connection
+                                                newlines.append(comp1[0]+" "+self.deleted[comp1[1]]+"   "+xyzd+" \n")
+                                        else:
+                                                newlines.append(comp1[0]+" "+comp1[1]+"   "+xyzd+" \n")
+                        else:
+                                #don't forget to add the last line
+                                newlines.append(line)
+                #print self.linelist[-1], newlines[-1]
+                print "######## Zero size comp removal: orig num lines=", len(self.linelist), ", new num lines=", len(newlines)
+                self.linelist=newlines
+
+        def ID_branches(self):
                 for line in self.linelist:
                         #count the number of children of each compartment
                         parent=line.split()[1]
@@ -85,14 +120,15 @@ def calc_electrotonic_len(comp,factor):
                 print('    calc_len comp %s lambda=%.1f len=%.3f L=%.5f' % (comp[0],lamb, length, length/lamb))
         return length/lamb
 
-def write_line(out_file,deleted,comp):
+def write_line(out_file,deleted,comp,numcomps):
 	if(deleted.has_key(comp[1])):# if voxel refers to deleted voxel change the connection to the deleted voxels connection
                 newline=comp[0]+" "+deleted[comp[1]]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
 		#print('old:',comp,'deleted:',deleted[comp[1]], 'new:',newline)
-		out_file.write(newline)
 	else:
-                line=comp[0]+" "+comp[1]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
-		out_file.write(line)
+                newline=comp[0]+" "+comp[1]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
+	out_file.write(newline)
+        numcomps=numcomps+1
+        return numcomps
 
 def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
         #first method uses mean diameter and preserves electrotonic length, slightly different total surface area
@@ -143,35 +179,32 @@ def condenser(m, type1, max_len, lambda_factor):
 			comp2 = m.linelist[line_num+1].split()
                 #
                 #compare the two compartments to determine if they can be merged
-                ##################### type = 1 removes 0 length compartments
-		if(type1 == "0"): 
-			if(comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0" and comp1[1] != 'none'):#if all coordinates are 0's and not soma compartment
-				print(comp2,comp1)
-				deleted[comp1[0]] = comp1[1]# saves into dictionary to check future voxels
-                                print (deleted)
-                        else:
-                                write_line(m.outfile,deleted, comp1)
-                ##################### type = ac or dc condenses branches with same radius and combined electronic length < 0.1 lambda [AC or DC]
+                ######## type = 1 removes 0 length compartments
+		if(type1 == "0"):
+                        m.outfile.write(line)
+                        num_comps=num_comps+1
+                ######## type = ac or dc condenses branches with same radius and combined electronic length < 0.1 lambda [AC or DC]
 		elif(type1 == "ac" or type1 == "dc"):
-                        if comp1[0] in m.do_not_delete:
+                        if comp1[0] in m.do_not_delete and info:
                                 print 'do not delete', comp1[0]
 			# calculate the lengths and check for total electronic length (len/lambda) being less then 0.1 (max_len)
-			if(comp1[5] == comp2[5] and comp2[1]==comp1[0] and comp1[0] and comp1[0] not in m.do_not_delete): # comp2 is attached to comp1 and radii are the same
-                                print 'ok to delete', comp1[0]
+			if(comp1[5] == comp2[5] and comp2[1]==comp1[0] and comp1[0] and comp1[0] not in m.do_not_delete):
+                                # comp2 is attached to comp1 and radii are the same
+                                if debug:
+                                        print 'ok to delete', comp1[0]
                                 len_comp1=calc_electrotonic_len(comp1,lambda_factor)
                                 len_comp2=calc_electrotonic_len(comp2,lambda_factor)
-				if((len_comp2+len_comp1) < max_len): #if it is less then the designated electrotonic length combine the two compartments
-					if(comp1[1] in deleted):
-						deleted[comp1[0]] = deleted[comp1[1]]
-					else: #delete comp1, keep track of deletion, update comp2 x,y,z if relative, no need if absolute coordinates?
-						deleted[comp1[0]] = comp1[1]
-                                        #not being written in case it gets combined in next line
-					#m.outfile.write(comp2[0]+" "+deleted[comp1[0]]+" "+comp2[2]+" "+comp2[3]+" "+comp2[4]+" "+comp2[5]+"\n")
+				if((len_comp2+len_comp1) < max_len):
+                                        #if it is less then the designated electrotonic length combine the two compartments
+					if(comp1[1] in m.deleted):
+						m.deleted[comp1[0]] = m.deleted[comp1[1]]
+					else: #delete comp1, keep track of deletion, update comp2 x,y,z 
+						m.deleted[comp1[0]] = comp1[1]
                                 else:
-                                        write_line(m.outfile,deleted,comp1)
+                                        num_comps=write_line(m.outfile,m.deleted,comp1,num_comps)
                         else:
-                                write_line(m.outfile,deleted,comp1)
-                ##################### type = radii condenses branches with same radius and combined electronic length < 0.1 lambda [AC], calculates new coordinates 
+                                num_comps=write_line(m.outfile,m.deleted,comp1,num_comps)
+                ######## type = radii condenses branches with same radius and combined electronic length < 0.1 lambda [AC], calculates new coordinates 
 		elif(type1 == "radii"): 
 			ten = .2*float(comp1[5])  #ten percent of diameter
                         len_comp1=calc_electrotonic_len(comp1,lambda_factor)
