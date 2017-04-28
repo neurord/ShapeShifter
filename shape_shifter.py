@@ -27,16 +27,17 @@
 # change info or debug (below) to get additional information while running program
 
 #TO DO:
+# fix subdivide_comp to work with branches at an angle
+# read (and use) rm, cm and ri from p file
+# write rm, cm and ri to p file if (a) not already specified and (b) given as input parameters
 # test for whether absolute or relative coordinates.  If absolute - print error message (until length calculation can be updated)
-# combine radii and ac and dc, with type implicit from f (0 for dc) and radius factor (0 if must match exactly)
-#    move if type == to outside of for loop when this is done
 # deal with blank lines (that begin with spaces) in .p file
 
 #Saivardhan Mada
 #Jul 20th, 2016
 #Avrama Blackwell
 #George Mason University
-#Apr 27, 2017
+#Apr 28, 2017
 
 import sys
 import math
@@ -141,11 +142,6 @@ def write_line(out_file,replace_parent,comp,numcomps):
         return numcomps
 
 def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
-        #first method uses mean diameter and preserves electrotonic length, slightly different total surface area
-        #diameters=[float(comp[5]) for comp in condense]
-        #dia=np.mean(diameters)
-	#l = surface_tot/(np.pi*dia)
-        #print ('mean dia: dia, l, tsa', dia, l, np.pi*dia*l, 'new Ltot', l/(lamb_factor*math.sqrt(dia)))
         dia=math.pow(surface_tot/(Ltot*np.pi*lamb_factor),(2/3.))
         l=surface_tot/(np.pi*dia)
         if debug:
@@ -205,19 +201,16 @@ def subdivide_comp(comp,segs):
         
 
 def condenser(m, type1, max_len, lambda_factor, rad_diff):
-	condense = []
-	Ltot = 0
-	surface_tot = 0
         num_comps=0
-	for line in m.linelist:
-		comp1 = line.split()
-                if debug:
-                        print '**** begin', comp1[0]
-		line_num = m.linelist.index(line)
-		if(line_num <= len(m.linelist)-2):
-			comp2 = m.linelist[line_num+1].split()
-                ####### type = "expand" takes long compartments and subdivides into multiple "segments"
-                if (type1 == "expand"):
+        ######## type = 1 removes 0 length compartments, this is done in class, so just write file
+	if(type1 == "0"):
+	        for line in m.linelist:
+                        m.outfile.write(line)
+                        num_comps=num_comps+1
+        ####### type = "expand" takes long compartments and subdivides into multiple "segments"
+        if (type1 == "expand"):
+ 	        for line in m.linelist:
+		        comp1 = line.split()
                         L_comp1=calc_electrotonic_len(comp1,lambda_factor)
                         print "max_len", max_len, "L", L_comp1
                         if L_comp1>max_len:
@@ -234,44 +227,29 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                                 if info:
                                         print "OK", comp1[0],L_comp1
-                ######## type = 1 removes 0 length compartments
-		if(type1 == "0"):
-                        m.outfile.write(line)
-                        num_comps=num_comps+1
-                ######## type = ac or dc condenses branches with same radius and combined electronic length < 0.1 lambda [AC or DC]
-		elif(type1 == "ac" or type1 == "dc"):
-                        if comp1[0] in m.do_not_delete and info:
-                                print 'do not delete', comp1[0]
-			# calculate the lengths and check for total electronic length (len/lambda) being less then 0.1 (max_len)
-			if(comp1[5] == comp2[5] and comp2[1]==comp1[0] and comp1[0] and comp1[0] not in m.do_not_delete):
-                                # comp2 is attached to comp1 and radii are the same
-                                if debug:
-                                        print 'ok to delete', comp1[0]
+        ######## type = radii condenses branches with similar radius and combined electronic length < 0.1 lambda
+	if (type1 == "radii"):    #if rad_diff = 0, only condenses branches with same radius
+	        condense = []
+	        Ltot = 0
+	        surface_tot = 0
+	        for line in m.linelist:
+		        comp1 = line.split()
+                        if debug:
+                                print '**** begin', comp1[0]
+ 		        line_num = m.linelist.index(line)
+                        if line_num <= (len(m.linelist)-2):
+			        comp2 = m.linelist[line_num+1].split()
                                 len_comp1=calc_electrotonic_len(comp1,lambda_factor)
                                 len_comp2=calc_electrotonic_len(comp2,lambda_factor)
-				if((len_comp2+len_comp1) < max_len):
-                                        #if it is less then the designated electrotonic length combine the two compartments
-					if(comp1[1] in m.replace_parent):
-						m.replace_parent[comp1[0]] = m.replace_parent[comp1[1]]
-					else: #delete comp1, keep track of deletion, update comp2 x,y,z 
-						m.replace_parent[comp1[0]] = comp1[1]
-                                else:
-                                        num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
-                        else:
-                                num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
-                ######## type = radii condenses branches with same radius and combined electronic length < 0.1 lambda [AC], calculates new coordinates 
-		elif(type1 == "radii"):
-                        radius_diff=rad_diff*2*float(comp1[5])  
-                        len_comp1=calc_electrotonic_len(comp1,lambda_factor)
-                        len_comp2=calc_electrotonic_len(comp2,lambda_factor)
                         if len(condense):
-                                delta_rad=abs(float(condense[0][5]) - float(comp2[5]))
+                                delta_rad=abs(float(condense[0][5]) - float(comp2[5]))/float(condense[0][5])
                                 tot_len=len_comp2+Ltot
                         else:
-                                delta_rad=abs(float(comp1[5]) - float(comp2[5]))
+                                delta_rad=abs(float(comp1[5]) - float(comp2[5]))/float(comp1[5])
                                 tot_len=len_comp1 + len_comp2
-			if(delta_rad <= radius_diff and comp2[1]==comp1[0] and tot_len < max_len and comp1[0] not in m.do_not_delete):
+			if(delta_rad <= rad_diff and comp2[1]==comp1[0] and tot_len < max_len and comp1[0] not in m.do_not_delete):
                                 #if the radii are almost the same and comp2 is attached to comp1 and not in do_not_delete list
+                                #if this is last line of file, comp2=comp1, thus comp2[1] != comp1[0], don't enter this loop
                                 if len(condense)==0:
                                         #if this is 1st compartment of a set, add it
                                         condense.append(comp1)
@@ -302,7 +280,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                         #cannot condense this comp and nothing in condense set.  Just print out line
                                         num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                                         if info:
-                                                print 'not condensing',len(condense),Ltot, comp1[0] 
+                                                print 'not condensing',len(condense),Ltot, comp1[0], "rad", rad_diff,delta_rad
         print "finished,", num_comps, "output compartments"
 
 if __name__ == '__main__':
@@ -337,7 +315,7 @@ if __name__ == '__main__':
 	variables[3] = float(h.cm)
 	variables[4] = float(h.f)
 	variables[5] = float(h.max_len)
-	variables[5] = float(h.rad_diff)
+	variables[6] = float(h.rad_diff)
 
 	#reads p file
         newmorph=morph(h.file)
