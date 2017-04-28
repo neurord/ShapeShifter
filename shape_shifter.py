@@ -18,21 +18,19 @@
 #Usage: python shape_shifter.py --file 'filename.p' --type 'dc'
 #Cannot have blank lines in p file
 #type can be:
-#  'ac' combine compartments of same radius, electrotonic length not to exceed max_len * ac lambda
-#  'dc' combine compartments of same radius, electrotonic length not to exceed max_len * dc lambda
 #  '0' just remove compartments of size 0
-#  'radii' combine compartments of similar radius (not to exceed 10% different), electrotonic length not to exceed max_len*ac lambda
+#  'radii' combine compartments of similar radius (specify 0 to only combine identical radii),
+#          electrotonic length not to exceed max_len* lambda. (Specify 0 to use dc lambda)
 # can also specify alternative values to default rm [4], cm [0.01], ri [2.5] units are SI
 # can also specify frequency (--f) for ac lambda calculation, current default is 0.1 hz
 # can also specify maximum electrotonic length (--max_len) current default is 0.1
 # change info or debug (below) to get additional information while running program
 
 #TO DO:
-# fix expander to deal with branching and compartments distal the compartment that was expanded
 # test for whether absolute or relative coordinates.  If absolute - print error message (until length calculation can be updated)
 # combine radii and ac and dc, with type implicit from f (0 for dc) and radius factor (0 if must match exactly)
 #    move if type == to outside of for loop when this is done
-# deal with (recognize) blank lines in .p file
+# deal with blank lines (that begin with spaces) in .p file
 
 #Saivardhan Mada
 #Jul 20th, 2016
@@ -45,7 +43,7 @@ import math
 import argparse
 import numpy as np
 
-debug=1
+debug=0
 info=1
 
 class morph:
@@ -53,7 +51,7 @@ class morph:
                 #dictionary to hold number of branches of each compartment
                 self.children={}
                 #dictionary to hold deleted voxels
-                self.deleted = {}
+                self.replace_parent = {}
                 self.readfile(pfile)
                 self.remove_zeros()
                 self.ID_branches()
@@ -61,7 +59,7 @@ class morph:
         def readfile(self,pfile):
                 self.pfile=pfile
                 linelist=open(pfile, 'r').readlines()
-                self.linelist=[line for line in linelist if (line[0] !='*' and line[0] !='/')]
+                self.linelist=[line for line in linelist if (line[0] !='*' and line[0] !='/' and line[0] != '\n')]
                 numheader=len(linelist)-len(self.linelist)
                 out_name=pfile.split('.p')[0]+'out.p'
                 self.outfile = open(out_name, 'w')
@@ -77,15 +75,15 @@ class morph:
                                 #Test further, possibly modify "0" to floating point 0
 			        if(comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0" and comp1[1] != 'none'):
                                         #if all coordinates are 0's and not soma compartment
-				        self.deleted[comp1[0]] = comp1[1]# saves into dictionary to check future voxels
+				        self.replace_parent[comp1[0]] = comp1[1]# saves into dictionary to check future voxels
                                         if info:
-				                print "eliminate", comp1,"change child of", comp2, "to", comp1[1]
-                                                print "deleted comp dictionary", self.deleted
+				                print "!!!!!!!eliminate", comp1,"change child of", comp2, "to", comp1[1]
+                                                print "replace_parent comp dictionary", self.replace_parent
                                 else:
                                         xyzd=comp1[2]+"  "+comp1[3]+"  "+comp1[4]+"  "+comp1[5]
-	                                if(self.deleted.has_key(comp1[1])):
+	                                if(self.replace_parent.has_key(comp1[1])):
                                         # if voxel refers to deleted voxel change the connection to the deleted voxels connection
-                                                newlines.append(comp1[0]+" "+self.deleted[comp1[1]]+"   "+xyzd+" \n")
+                                                newlines.append(comp1[0]+" "+self.replace_parent[comp1[1]]+"   "+xyzd+" \n")
                                         else:
                                                 newlines.append(comp1[0]+" "+comp1[1]+"   "+xyzd+" \n")
                         else:
@@ -115,12 +113,7 @@ def calc_lambda (type1, RM, RI, CM, F):
 	dc_factor = math.sqrt(RM/(RI*4.0))*1000 #1000 is for unit conversion to microns 
 	partial_ac= 2.0*math.pi*F*tm 
  	ac_factor = dc_factor * math.sqrt(2.0/(1.0+math.sqrt(1.0+math.pow(partial_ac,2.0))))
-        if type1=='ac':
-                return ac_factor
-        elif type1=='dc':
-                return dc_factor
-        else:
-                return ac_factor #used by type=radius
+        return ac_factor 
 
 def calc_length(comp):
         x=float(comp[2])
@@ -137,10 +130,10 @@ def calc_electrotonic_len(comp,factor):
                 print('    calc_len comp %s lambda=%.1f len=%.3f L=%.5f' % (comp[0],lamb, length, length/lamb))
         return length/lamb
 
-def write_line(out_file,deleted,comp,numcomps):
-	if(deleted.has_key(comp[1])):# if voxel refers to deleted voxel change the connection to the deleted voxels connection
-                newline=comp[0]+" "+deleted[comp[1]]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
-		#print('old:',comp,'deleted:',deleted[comp[1]], 'new:',newline)
+def write_line(out_file,replace_parent,comp,numcomps):
+	if(replace_parent.has_key(comp[1])):# if voxel refers to deleted voxel change the connection to the deleted voxels connection
+                newline=comp[0]+" "+replace_parent[comp[1]]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
+		print('!!!!old:',comp,'deleted:',comp[1], 'new:',newline)
 	else:
                 newline=comp[0]+" "+comp[1]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
 	out_file.write(newline)
@@ -180,35 +173,38 @@ def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
 	x = np.round(l*math.cos(theta)*math.sin(phi),3)
 	y = np.round(l*math.sin(theta)*math.sin(phi),3)
 	z = np.round(l*math.cos(phi),3)
-        return str(x),str(y),str(z),str(dia)
+        return str(x),str(y),str(z),str(np.round(dia,3))
 
 def subdivide_comp(comp,segs):
+        myname=[]
         parent=[]
-        child=[]
         newcomp=[]
         xyz=[float(x) for x in comp[2:5]]
         print xyz
         for i in range(segs):
                 #initialize x,y,z to 0 0 0
                 newcomp.append(['0','0','0',comp[5]])
-                parent.append(comp[0]+str(i))
+                myname.append(comp[0]+'_'+str(i))
                 if i==0:
-                   child.append(comp[1])
+                   parent.append(comp[1])
                 else:
-                   child.append(parent[i-1])
-                if np.sum(xyz)==np.max(xyz):
-                        maxval=max(xyz)
-                        maxindex=xyz.index(maxval)
+                   parent.append(myname[i-1])
+                if np.sum(np.abs(xyz))==np.max(np.abs(xyz)):
+                        maxval=max(np.abs(xyz))
+                        if maxval==-min(xyz):
+                                maxindex=xyz.index(-maxval)
+                        else:
+                                maxindex=xyz.index(maxval)
                         comp_index=maxindex+2
                         newcomp[i][maxindex]=str(np.round(float(comp[comp_index])/segs,5))
                 else:
                         print "new approach needed"
         for i in range(segs):
-                print parent[i], child[i], newcomp[i]
-        return parent,child,newcomp
+                print myname[i],parent[i], newcomp[i]
+        return myname,parent,newcomp
         
 
-def condenser(m, type1, max_len, lambda_factor):
+def condenser(m, type1, max_len, lambda_factor, rad_diff):
 	condense = []
 	Ltot = 0
 	surface_tot = 0
@@ -220,23 +216,24 @@ def condenser(m, type1, max_len, lambda_factor):
 		line_num = m.linelist.index(line)
 		if(line_num <= len(m.linelist)-2):
 			comp2 = m.linelist[line_num+1].split()
-                #
+                ####### type = "expand" takes long compartments and subdivides into multiple "segments"
                 if (type1 == "expand"):
                         L_comp1=calc_electrotonic_len(comp1,lambda_factor)
                         print "max_len", max_len, "L", L_comp1
                         if L_comp1>max_len:
                                 segs=int(math.ceil(L_comp1/max_len))
-                                print "NO GOOD", L_comp1,segs
-                                par,chil,xyzdiam=subdivide_comp(comp1,segs)
-                                for p,c,xyzd in zip(par,chil,xyzdiam):
-                                        newline=p+'  '+c+'  '+xyzd[0]+'  '+xyzd[1]+'  '+xyzd[2]+'  '+xyzd[3]+'\n'
-                                        m.outfile.write(newline)
-                                        num_comps=num_comps+1
+                                myname,par,xyzdiam=subdivide_comp(comp1,segs)
+                                m.replace_parent[comp1[0]]=myname[-1]
+                                if info:
+                                        print "!!!!Branch to long:", comp1[0],L_comp1,segs
+                                        print m.replace_parent, "attach distal branches to", m.replace_parent[comp1[0]], "instead of", comp1[0]
+                                for n,p,xyzd in zip(myname,par,xyzdiam):
+                                        newcomp=[n, p, xyzd[0], xyzd[1], xyzd[2], xyzd[3]]
+                                        num_comps=write_line(m.outfile,m.replace_parent,newcomp,num_comps)
                         else:
-                                m.outfile.write(line)
-                                num_comps=num_comps+1
-                                print "OK", L_comp1
-                #compare the two compartments to determine if they can be merged
+                                num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
+                                if info:
+                                        print "OK", comp1[0],L_comp1
                 ######## type = 1 removes 0 length compartments
 		if(type1 == "0"):
                         m.outfile.write(line)
@@ -254,17 +251,17 @@ def condenser(m, type1, max_len, lambda_factor):
                                 len_comp2=calc_electrotonic_len(comp2,lambda_factor)
 				if((len_comp2+len_comp1) < max_len):
                                         #if it is less then the designated electrotonic length combine the two compartments
-					if(comp1[1] in m.deleted):
-						m.deleted[comp1[0]] = m.deleted[comp1[1]]
+					if(comp1[1] in m.replace_parent):
+						m.replace_parent[comp1[0]] = m.replace_parent[comp1[1]]
 					else: #delete comp1, keep track of deletion, update comp2 x,y,z 
-						m.deleted[comp1[0]] = comp1[1]
+						m.replace_parent[comp1[0]] = comp1[1]
                                 else:
-                                        num_comps=write_line(m.outfile,m.deleted,comp1,num_comps)
+                                        num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                         else:
-                                num_comps=write_line(m.outfile,m.deleted,comp1,num_comps)
+                                num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                 ######## type = radii condenses branches with same radius and combined electronic length < 0.1 lambda [AC], calculates new coordinates 
-		elif(type1 == "radii"): 
-			ten = .2*float(comp1[5])  #ten percent of diameter
+		elif(type1 == "radii"):
+                        radius_diff=rad_diff*2*float(comp1[5])  
                         len_comp1=calc_electrotonic_len(comp1,lambda_factor)
                         len_comp2=calc_electrotonic_len(comp2,lambda_factor)
                         if len(condense):
@@ -273,7 +270,7 @@ def condenser(m, type1, max_len, lambda_factor):
                         else:
                                 delta_rad=abs(float(comp1[5]) - float(comp2[5]))
                                 tot_len=len_comp1 + len_comp2
-			if(delta_rad <= ten and comp2[1]==comp1[0] and tot_len < max_len and comp1[0] not in m.do_not_delete):
+			if(delta_rad <= radius_diff and comp2[1]==comp1[0] and tot_len < max_len and comp1[0] not in m.do_not_delete):
                                 #if the radii are almost the same and comp2 is attached to comp1 and not in do_not_delete list
                                 if len(condense)==0:
                                         #if this is 1st compartment of a set, add it
@@ -281,15 +278,14 @@ def condenser(m, type1, max_len, lambda_factor):
 					Ltot = len_comp1
                                         #surface_area=pi*diam*len, comp[5] stores diameter, not radius
 					surface_tot = math.pi * float(comp1[5]) * calc_length(comp1)
-					#if(comp1[1] in deleted):
-					#	deleted[comp1[0]] = deleted[comp1[1]]
-					#	condense.append(comp1)
-					#else:
-					#	deleted[comp1[0]] = comp1[1]
                                 #always add the 2nd compartment to set of comartments to be condensed
                                 condense.append(comp2)
                                 Ltot=Ltot+len_comp2
                                 surface_tot=surface_tot+(math.pi * float(comp2[5]) * calc_length(comp2))
+				if(comp1[1] in m.replace_parent): #m.replace_parent.has_key(comp[1]))
+					m.replace_parent[comp1[0]] = m.replace_parent[comp1[1]]
+				else:
+					m.replace_parent[comp1[0]] = comp1[1]
 			else:
                                 if len(condense):
                                         #cannot add any additional compartments.  Condense the set
@@ -297,20 +293,16 @@ def condenser(m, type1, max_len, lambda_factor):
                                         if info:
                                                 print '#######condense', condense, 'stop before', comp2[0]
                                                 print 'new: x y z',x,y,z 
-					m.outfile.write(condense[-1][0]+" "+condense[0][1]+" "+x+" "+y+" "+z+" "+dia+"\n")
+					newcomp=[condense[-1][0], condense[0][1], x, y, z, dia]
+                                        num_comps=write_line(m.outfile,m.replace_parent,newcomp,num_comps)
 					condense = []
 					Ltot = 0
 					surface_tot = 0
-                                        num_comps=num_comps+1
 				else:
-                                        #cannot condense.  Print out comp1
+                                        #cannot condense this comp and nothing in condense set.  Just print out line
+                                        num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                                         if info:
                                                 print 'not condensing',len(condense),Ltot, comp1[0] 
-					Ltot = 0
-					surface_tot = 0
-			                condense = []
-					m.outfile.write(line)
-                                        num_comps=num_comps+1
         print "finished,", num_comps, "output compartments"
 
 if __name__ == '__main__':
@@ -320,15 +312,17 @@ if __name__ == '__main__':
         cm = 0.010 #F/m^2
         max_len = 0.1 #electrotonic length
         f = .1 #Hz
+        rad_diff=0.1
         type1 = "ac"
 
 	#array of variables 
-	variables = [type1, rm, ri, cm, f, max_len]
+	variables = [type1, rm, ri, cm, f, max_len, rad_diff]
         
 	#sets up arg parser for all the variables 
 	parser = argparse.ArgumentParser()
         parser.add_argument('--file')
-	parser.add_argument('--type', choices={'ac', 'dc', '0', 'radii','expand'}, default='radii')
+	parser.add_argument('--type', choices={'0', 'radii','expand'}, default='radii')
+	parser.add_argument('--rad_diff', default=rad_diff)
 	parser.add_argument('--rm', default=rm)
 	parser.add_argument('--ri', default=ri)
 	parser.add_argument('--cm', default=cm)
@@ -343,6 +337,7 @@ if __name__ == '__main__':
 	variables[3] = float(h.cm)
 	variables[4] = float(h.f)
 	variables[5] = float(h.max_len)
+	variables[5] = float(h.rad_diff)
 
 	#reads p file
         newmorph=morph(h.file)
@@ -350,6 +345,6 @@ if __name__ == '__main__':
         #calculate lambda
         lambd_factor=calc_lambda(variables[0], variables[1], variables[2], variables[3], variables[4])
         #may not need variables 1-4 once radii version fixed (or eliminated)
-	condenser(newmorph, variables[0], variables[5], lambd_factor)
+	condenser(newmorph, variables[0], variables[5], lambd_factor, variables[6])
 
 
