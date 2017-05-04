@@ -39,6 +39,7 @@
 #George Mason University
 #Apr 28, 2017
 
+from __future__ import print_function, division
 import sys
 import math
 import argparse
@@ -60,7 +61,8 @@ class morph:
         def readfile(self,pfile):
                 self.pfile=pfile
                 linelist=open(pfile, 'r').readlines()
-                self.linelist=[line for line in linelist if (line[0] !='*' and line[0] !='/' and line[0] != '\n')]
+                #skip parameters (*), comments (/) and blank lines (\n or \r)
+                self.linelist=[line for line in linelist if (line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r')]
                 numheader=len(linelist)-len(self.linelist)
                 out_name=pfile.split('.p')[0]+'out.p'
                 self.outfile = open(out_name, 'w')
@@ -78,8 +80,8 @@ class morph:
                                         #if all coordinates are 0's and not soma compartment
 				        self.replace_parent[comp1[0]] = comp1[1] # saves into dictionary to check future voxels
                                         if info:
-				                print "!!!!!!!eliminate", comp1,"change child of", comp2, "to", comp1[1]
-                                                print "replace_parent comp dictionary", self.replace_parent
+				                print ("!!!!!!!eliminate", comp1,"change child of", comp2, "to", comp1[1])
+                                                print ("replace_parent comp dictionary", self.replace_parent)
                                 else:
                                         xyzd=comp1[2]+"  "+comp1[3]+"  "+comp1[4]+"  "+comp1[5]
 	                                if(self.replace_parent.has_key(comp1[1])):
@@ -91,7 +93,7 @@ class morph:
                                 #don't forget to add the last line
                                 newlines.append(line)
                 #print self.linelist[-1], newlines[-1]
-                print "######## Zero size comp removal: orig num lines=", len(self.linelist), ", new num lines=", len(newlines)
+                print ("######## Zero size comp removal: orig num lines=", len(self.linelist), ", new num lines=", len(newlines))
                 self.linelist=newlines
 
         def ID_branches(self):
@@ -107,7 +109,7 @@ class morph:
                 self.do_not_delete=[x.split()[0] for x in self.linelist if x.split()[1]=='none']
                 #branch points
                 self.do_not_delete=self.do_not_delete+[comp for comp in self.children.keys() if self.children[comp]>1]
-                print "do not delete these parent branch compartments:", self.do_not_delete
+                print ("do not delete these parent branch compartments:", self.do_not_delete)
 
 def calc_lambda (type1, RM, RI, CM, F):
 	tm = RM * CM #time constant
@@ -177,7 +179,7 @@ def subdivide_comp(comp,segs):
         xyz=[float(x) for x in comp[2:5]]
         length=math.sqrt(xyz[0]*xyz[0] + xyz[1]*xyz[1] + xyz[2]*xyz[2])
         newlen=0
-        print "subdivide", comp[0], "x,y,z,len", xyz, length, "into", segs, "segments"
+        print ("subdivide", comp[0], "x,y,z,len", xyz, length, "into", segs, "segments")
         new_xyz=np.zeros(3)
         for j in range(3):
                 new_xyz[j]=np.round(xyz[j]/segs,5)
@@ -194,8 +196,8 @@ def subdivide_comp(comp,segs):
                 newlen=newlen+seg_length
         if info:
                 for i in range(segs):
-                        print "new seg", i, myname[i],parent[i], newcomp[i]
-                print "total length", newlen, "seg", seg_length 
+                        print ("new seg", i, myname[i],parent[i], newcomp[i])
+                print ("total length", newlen, "seg", seg_length )
         return myname,parent,newcomp
         
 def condenser(m, type1, max_len, lambda_factor, rad_diff):
@@ -210,20 +212,20 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
  	        for line in m.linelist:
 		        comp1 = line.split()
                         L_comp1=calc_electrotonic_len(comp1,lambda_factor)
-                        print "max_len", max_len, "L", L_comp1
+                        print ("max_len", max_len, "L", L_comp1)
                         if L_comp1>max_len:
                                 segs=int(math.ceil(L_comp1/max_len))
                                 myname,par,xyzdiam=subdivide_comp(comp1,segs)
                                 m.replace_parent[comp1[0]]=myname[-1]
                                 if info:
-                                        print m.replace_parent, "attach distal branches to", m.replace_parent[comp1[0]], "instead of", comp1[0]
+                                        print (m.replace_parent, "attach distal branches to", m.replace_parent[comp1[0]], "instead of", comp1[0])
                                 for n,p,xyzd in zip(myname,par,xyzdiam):
                                         newcomp=[n, p, xyzd[0], xyzd[1], xyzd[2], xyzd[3]]
                                         num_comps=write_line(m.outfile,m.replace_parent,newcomp,num_comps)
                         else:
                                 num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                                 if info:
-                                        print "OK", comp1[0],L_comp1
+                                        print ("OK", comp1[0])
         ######## type = radii condenses branches with similar radius and combined electronic length < 0.1 lambda
 	if (type1 == "radii"):    #if rad_diff = 0, only condenses branches with same radius
 	        condense = []
@@ -232,7 +234,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
 	        for line in m.linelist:
 		        comp1 = line.split()
                         if debug:
-                                print '**** begin', comp1[0]
+                                print ('**** begin', comp1[0])
  		        line_num = m.linelist.index(line)
                         if line_num <= (len(m.linelist)-2):
 			        comp2 = m.linelist[line_num+1].split()
@@ -266,8 +268,8 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                         #cannot add any additional compartments.  Condense the set
                                         x,y,z,dia=calc_newcomp(condense,surface_tot,Ltot,lambda_factor)
                                         if info:
-                                                print '#######condense', condense, 'stop before', comp2[0]
-                                                print 'new: x y z',x,y,z 
+                                                print ('#######condense', condense, 'stop before', comp2[0])
+                                                print ('new: x y z',x,y,z )
 					newcomp=[condense[-1][0], condense[0][1], x, y, z, dia]
                                         num_comps=write_line(m.outfile,m.replace_parent,newcomp,num_comps)
 					condense = []
@@ -277,8 +279,8 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                         #cannot condense this comp and nothing in condense set.  Just print out line
                                         num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                                         if info:
-                                                print 'not condensing',len(condense),Ltot, comp1[0], "rad", rad_diff,delta_rad
-        print "finished,", num_comps, "output compartments"
+                                                print ('not condensing',len(condense),Ltot, comp1[0], "rad", rad_diff,delta_rad)
+        print ("finished,", num_comps, "output compartments")
 
 if __name__ == '__main__':
         #set default parameters
@@ -288,37 +290,33 @@ if __name__ == '__main__':
         max_len = 0.1 #electrotonic length
         f = .1 #Hz
         rad_diff=0.1
-        type1 = "ac"
+        type1 = "radii"
         #
-	#array of variables 
-	variables = [type1, rm, ri, cm, f, max_len, rad_diff]
-        #
-	#sets up arg parser for all the variables 
-	parser = argparse.ArgumentParser()
+        #set up argument parsers
+        parser = argparse.ArgumentParser()
         parser.add_argument('--file')
 	parser.add_argument('--type', choices={'0', 'radii','expand'}, default='radii')
-	parser.add_argument('--rad_diff', default=rad_diff)
-	parser.add_argument('--rm', default=rm)
-	parser.add_argument('--ri', default=ri)
-	parser.add_argument('--cm', default=cm)
-	parser.add_argument('--f', default=f)
-	parser.add_argument('--max_len', default=max_len)
+	parser.add_argument('--rad_diff', default=rad_diff, type=float)
+	parser.add_argument('--rm', default=rm, type=float)
+	parser.add_argument('--ri', default=ri, type=float)
+	parser.add_argument('--cm', default=cm, type=float)
+	parser.add_argument('--f', default=f, type=float)
+	parser.add_argument('--max_len', default=max_len, type=float)
         #
-	#takes values from arg parser and adds them to the variable array 
-	h = parser.parse_args()
-	variables[0] = h.type
-	variables[1] = float(h.rm)
-	variables[2] = float(h.ri)
-	variables[3] = float(h.cm)
-	variables[4] = float(h.f)
-	variables[5] = float(h.max_len)
-	variables[6] = float(h.rad_diff)
+        try:
+	        args = ARGS.split() #in python: define space-separated ARGS string
+	        do_exit = False
+        except NameError: #if you are not in python, read in filename and other parameters
+	        args = sys.argv[1:]
+	        do_exit = True
+	h = parser.parse_args(args)
         #
 	#reads p file, delete zero size compartments
         newmorph=morph(h.file)
         #
         #calculate lambda
-        lambd_factor=calc_lambda(variables[0], variables[1], variables[2], variables[3], variables[4])
+        lambd_factor=calc_lambda(h.type, h.rm, h.ri, h.cm, h.f)
+        print('params', h, 'lambda', lambd_factor)
         #condense the compartment
-	condenser(newmorph, variables[0], variables[5], lambd_factor, variables[6])
+	condenser(newmorph, h.type, h.max_len, lambd_factor, h.rad_diff)
 
