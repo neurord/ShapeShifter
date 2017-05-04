@@ -15,23 +15,26 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.'''
 
-#Usage: python shape_shifter.py --file 'filename.p' --type 'dc'
-#Cannot have blank lines in p file
+#Usage: python shape_shifter.py --file 'filename.p' --type 'radii'
 #type can be:
 #  '0' just remove compartments of size 0
 #  'radii' combine compartments of similar radius (specify 0 to only combine identical radii),
-#          electrotonic length not to exceed max_len* lambda. (Specify 0 to use dc lambda)
-# can also specify alternative values to default rm [4], cm [0.01], ri [2.5] units are SI
-# can also specify frequency (--f) for ac lambda calculation, current default is 0.1 hz
-# can also specify maximum electrotonic length (--max_len) current default is 0.1
+#          electrotonic length not to exceed max_len* lambda.
+#  'expand' to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
+#           electrotonic length of subdivided compartments do not exceed max_len* lambda
+# can specify alternative values to default rm [4], cm [0.01], ri [2.5] units are SI
+# can specify frequency (--f) for ac lambda calculation, current default is 0.1 hz
+# can specify maximum electrotonic length (--max_len) current default is 0.1, specify 0 to use dc lambda
+# can specify maximum difference (rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
 # change info or debug (below) to get additional information while running program
 
 #TO DO:
-# test remove_zeros (and condenser) using additional p files - check whether zero compartments have values 0.0 
+# test remove_zeros and condense (--type 'radii') using additional p files
+#  - check whether zero compartments have values 0.0
+#  - validate voltage response with simulations 
 # read (and use) rm, cm and ri from p file
 # write rm, cm and ri to p file if (a) not already specified and (b) given as input parameters
 # test for whether absolute or relative coordinates.  If absolute - print error message (until length calculation can be updated)
-# deal with blank lines (that begin with spaces) in .p file
 
 #Saivardhan Mada
 #Jul 20th, 2016
