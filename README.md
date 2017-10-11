@@ -26,17 +26,20 @@ Morphology files can be attained through http://neuromorpho.org/ and these .swc 
  
 **shape_shifter usage**
 python shape_shifter.py --file 'filename.p' --type 'radii'
-*type* can be:
++ type can be:
 
   - '0' - just remove compartments of size 0
   - 'radii' - combine compartments of similar radius (specify 0 for rad_diff to only combine identical radii),
           electrotonic length of condensed compartments do not exceed max_len* lambda 
-  - 'expand' - to change single, long compartments (e.g. a Neuron software section) into multiple smaller compartments (e.g. Neuron segments)
-           electrotonic length of subdivided compartments do not exceed max_len* lambda
-*optional arguments*
+  - 'expand' - to change single, long compartments (e.g. a Neuron software section) into multiple smaller compartments (e.g. Moose compartments or Neuron segments). Resulting electrotonic length of subdivided compartments does not exceed max_len* lambda
 
-- can specify alternative values to default rm [4], cm [0.01], ri [2.5] for calculating lambda, units are SI
-- can specify frequency (--f) for ac lambda calculation, default is 0.1 hz, specify 0 to use dc lambda
-- can specify maximum electrotonic length (--max_len), default is 0.1
-- can specify criteria maximum difference (rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
-- change info or debug parameter to get more or less information while running program
++ optional arguments:
+
+  - can specify alternative values to default rm [4], cm [0.01], ri [2.5] for calculating lambda, units are SI
+  - can specify frequency (--f) for ac lambda calculation, default is 0.1 hz, specify 0 to use dc lambda
+  - can specify maximum electrotonic length (--max_len), default is 0.1
+  - can specify criteria maximum difference (rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
+  
+change info or debug parameter to get more or less information while running program
+           
+
