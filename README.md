@@ -1,10 +1,9 @@
-===========
 Description
-===========
-
+============
 shape_shifter is a morphology converter which takes in Genesis (.p) files of neurons and simplifies the morphology by combining sets of compartments with the same (or similar) radius and with combined length less than specified value of electrotonic length, caculated using either AC or DC methods. Previous trials of this program has resulted in reduction of the orginal file by almost 90%.  shape_shifter also can be used to transform a simple morphology with extremely long compartments into smaller compartments with same topology (connectivity).
 
 **input files**
+
 Morphology files can be attained through http://neuromorpho.org/ and these .swc files on NeuroMorpho can be converted to .p files using cvapp, provided in this repository. We strongly recommend that the 1st three soma lines in the cvapp output file be combined into a single coma compartment by hand prior to running shape_shifter, because cvapp output of neuromorpho files typically has 3 soma compartments, with the first, parent compartment (which cannot be eliminated by shape_shifter) having zero size. In addition, you may need to remove blank lines from the .p file to avoid error messages.
 
 **CVAPP usage**
@@ -25,6 +24,7 @@ Morphology files can be attained through http://neuromorpho.org/ and these .swc 
 5. run shape_shifter
  
 **shape_shifter usage**
+
 python shape_shifter.py --file 'filename.p' --type 'radii'
 + type can be:
 
