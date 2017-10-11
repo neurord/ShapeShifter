@@ -79,7 +79,7 @@ class morph:
 		        if(line_num <= len(self.linelist)-2):
 			        comp2 = self.linelist[line_num+1].split()
                                 #Test further, possibly modify "0" to floating point 0
-			        if(comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0" and comp1[1] != 'none'):
+			        if(((comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0") or comp1[5]=="0") and comp1[1] != 'none'):
                                         #if all coordinates are 0's and not soma compartment
 				        self.replace_parent[comp1[0]] = comp1[1] # saves into dictionary to check future voxels
                                         if info:
