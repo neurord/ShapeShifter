@@ -75,20 +75,21 @@ class morph:
         def remove_zeros(self):
                 newlines=[]
                 for line_num,line in enumerate(self.linelist):
-		        comp1 = line.split()
-		        if(line_num <= len(self.linelist)-2):
-			        comp2 = self.linelist[line_num+1].split()
+                        comp1 = line.split()
+                        print(line,line_num,len(comp1))
+                        if(line_num <= len(self.linelist)-2):
+                                comp2 = self.linelist[line_num+1].split()
                                 #Test further, possibly modify "0" to floating point 0
-			        if(((comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0") or comp1[5]=="0") and comp1[1] != 'none'):
+                                if(((comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0") or comp1[5]=="0") and comp1[1] != 'none'):
                                         #if all coordinates are 0's and not soma compartment
-				        self.replace_parent[comp1[0]] = comp1[1] # saves into dictionary to check future voxels
+                                        self.replace_parent[comp1[0]] = comp1[1] # saves into dictionary to check future voxels
                                         if info:
-				                print ("!!!!!!!eliminate", comp1,"change child of", comp2, "to", comp1[1])
+                                                print ("!!!!!!!eliminate", comp1,"change child of", comp2, "to", comp1[1])
                                                 print ("replace_parent comp dictionary", self.replace_parent)
                                 else:
                                         xyzd=comp1[2]+"  "+comp1[3]+"  "+comp1[4]+"  "+comp1[5]
-	                                if(self.replace_parent.has_key(comp1[1])):
-                                        # if voxel refers to deleted voxel change the connection to the deleted voxels connection
+                                        if(self.replace_parent.has_key(comp1[1])):
+                                                # if voxel refers to deleted voxel change the connection to the deleted voxels connection
                                                 newlines.append(comp1[0]+" "+self.replace_parent[comp1[1]]+"   "+xyzd+" \n")
                                         else:
                                                 newlines.append(comp1[0]+" "+comp1[1]+"   "+xyzd+" \n")
@@ -118,7 +119,7 @@ def calc_lambda (type1, RM, RI, CM, F):
 	tm = RM * CM #time constant
 	dc_factor = math.sqrt(RM/(RI*4.0))*1000 #1000 is for unit conversion to microns 
 	partial_ac= 2.0*math.pi*F*tm 
- 	ac_factor = dc_factor * math.sqrt(2.0/(1.0+math.sqrt(1.0+math.pow(partial_ac,2.0))))
+        ac_factor = dc_factor * math.sqrt(2.0/(1.0+math.sqrt(1.0+math.pow(partial_ac,2.0))))
         return ac_factor 
 
 def calc_length(comp):
