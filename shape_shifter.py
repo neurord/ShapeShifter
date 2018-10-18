@@ -18,7 +18,7 @@
 #Usage: python shape_shifter.py --file 'filename.p' --type 'radii'
 #type can be:
 #  '0' just remove compartments of size 0
-#  'radii' combine compartments of similar radius (specify 0 to only combine identical radii),
+#  'condense' combine compartments of similar radius (specify 0 to only combine identical radii),
 #          electrotonic length not to exceed max_len* lambda.
 #  'expand' to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
 #           electrotonic length of subdivided compartments do not exceed max_len* lambda
@@ -29,8 +29,7 @@
 # change info or debug (below) to get additional information while running program
 
 #TO DO:
-# test remove_zeros and condense (--type 'radii') using additional p files
-#  - check whether zero compartments have values 0.0
+# test remove_zeros and condense (--type 'condense') using additional p files
 #  - validate voltage response with simulations 
 # read (and use) rm, cm and ri from p file
 # write rm, cm and ri to p file if (a) not already specified and (b) given as input parameters
@@ -48,8 +47,8 @@ import math
 import argparse
 import numpy as np
 
-debug=0
-info=1
+debug=0   #default is 0
+info=0    #default is 1
 
 class morph:
         def __init__(self,pfile):
@@ -60,68 +59,122 @@ class morph:
                 self.readfile(pfile)
                 self.remove_zeros()
                 self.ID_branches()
-        
+                #is this where to put 3-pt --> 1-pt soma code? and save as .p file?
+                #could read in data of first couple lines (need to change soma anyway)
+                
         def readfile(self,pfile):
+                '''
+                Reads from pfile as STRING values --> will convert later + include swc file specifics
+                '''
                 self.pfile=pfile
-                linelist=open(pfile, 'r').readlines()
+                self.linelist = []
+                lines=open(pfile, 'r').readlines()
                 #skip parameters (*), comments (/) and blank lines (\n or \r)
-                self.linelist=[line for line in linelist if (line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r')]
-                numheader=len(linelist)-len(self.linelist)
+                self.lines=[line for line in lines if (line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r')]
                 out_name=pfile.split('.p')[0]+'out.p'
                 self.outfile = open(out_name, 'w')
-                for line in linelist[0:numheader]:
+                '''
+                Reads in line by line than Converts to list of list
+                '''
+                for num, line in enumerate(self.lines):
+                        self.linelist.append(line)
+                        self.linelist[num] = self.linelist[num].split()
                         self.outfile.write(line)
-
+                '''
+                Conversion from strings --> floats takes place here
+                '''
+                #.p file child and parent are STRINGS --> keep as strings for now
+                #convert rest str. values into float (xyz, dia and dis)
+                for num,line in enumerate(self.linelist):
+                        for id, val in enumerate(line):
+                                if id > 1:
+                                        line[id] = float(line[id])
+                #print(self.linelist)
+                #.swc files have child/parent saved as int instead of names, maybe read as FLOATS??
+        
         def remove_zeros(self):
-                newlines=[]
-                for line_num,line in enumerate(self.linelist):
-		        comp1 = line.split()
-		        if(line_num <= len(self.linelist)-2):
-			        comp2 = self.linelist[line_num+1].split()
-                                #Test further, possibly modify "0" to floating point 0
-			        if(((comp1[2] == "0" and comp1[3] == "0" and comp1[4] == "0") or comp1[5]=="0") and comp1[1] != 'none'):
-                                        #if all coordinates are 0's and not soma compartment
-				        self.replace_parent[comp1[0]] = comp1[1] # saves into dictionary to check future voxels
-                                        if info:
-				                print ("!!!!!!!eliminate", comp1,"change child of", comp2, "to", comp1[1])
-                                                print ("replace_parent comp dictionary", self.replace_parent)
-                                else:
-                                        xyzd=comp1[2]+"  "+comp1[3]+"  "+comp1[4]+"  "+comp1[5]
-	                                if(self.replace_parent.has_key(comp1[1])):
-                                        # if voxel refers to deleted voxel change the connection to the deleted voxels connection
-                                                newlines.append(comp1[0]+" "+self.replace_parent[comp1[1]]+"   "+xyzd+" \n")
-                                        else:
-                                                newlines.append(comp1[0]+" "+comp1[1]+"   "+xyzd+" \n")
+                #set globals here for dictionary-like retrieval of split data in linelist
+                child = 0; parent = 1; x = 2; y = 3; z = 4; dia = 5; dis = 6
+                newlines=[]; parent_dict = {}; parent_list = [] #may want to convert parent dict to list
+                print(len(self.linelist))
+                for line in self.linelist:
+                        print(line)
+                for num,line in enumerate(self.linelist):
+                        #maybe we could calculate distance HERE to then help with REMOVING ZEROS later
+                        distance = np.sqrt((line[x])**2 + (line[y])**2 + (line[z])**2)
+                        line.append(distance)
+                '''
+                Remove Zeroes and Replace oldparent id with newparent id
+                '''
+                for num,line in enumerate(self.linelist):
+                        #removes (does not update new-list) any compartments with 0 distance or diameter OTHER THAN soma
+                        if((line[dia] == 0  or line[dis] == 0) and line[parent] != 'none'):
+                                #relabel remaining children to previous parent (or compartment that is deleted)
+                                #i.e. if                    4,3 0 0 0 <--- needs to be removed
+                                # then                      5,4 x y z
+                                # should be changed to      5,3 x y z <--- new parent connection to remaining children  
+                                parent_dict[line[child]] = line[parent]
+                                print ("######## Zero size comp removal: orig num lines=", line[child], ", new num lines=", line[parent])
                         else:
-                                #don't forget to add the last line
                                 newlines.append(line)
-                #print self.linelist[-1], newlines[-1]
-                print ("######## Zero size comp removal: orig num lines=", len(self.linelist), ", new num lines=", len(newlines))
-                self.linelist=newlines
+                if parent_dict: #checks if parent_dict has any items, THEN does recursion
+                        print('Zero point compartments removed; remaining comparments require parent-update for reconnection')
+                        print(parent_dict)
+                        #maybe put a 'limit' if too many zero-point compartments exists in a single morphology
+                        parent_len = len(parent_dict.items())
+                        
+                        if parent_len < 100: #just a placeholder for now; i.e. 100 zero-point compartments
+                                for num, line in enumerate(self.linelist):
+                                        #this should only iterate for each line in linelist
+                                        if line[parent] != 'none':
+                                                counter = 0 #in this organization the counter comes back to 0 for each line
+                                                line = self.replace_par(parent_dict, counter, line, parent, child)
+                                print(len(newlines))
+                                self.linelist = newlines
+                        else:
+                                print('Many zero-point compartments --> check morphology file')
+
+        #new function to calculate diameter from distance
 
         def ID_branches(self):
-                for line in self.linelist:
+                for line in self.lines:
                         #count the number of children of each compartment
                         parent=line.split()[1]
                         if parent in self.children.keys():
                                 self.children[parent]=self.children[parent]+1
                         else:
                                 self.children[parent]=1
-                #create list of compartments that shouldn't be deleted
-                #1st (soma) compartment
-                self.do_not_delete=[x.split()[0] for x in self.linelist if x.split()[1]=='none']
+                                #create list of compartments that shouldn't be deleted
+                                #1st (soma) compartment
+                self.do_not_delete=[x.split()[0] for x in self.lines if x.split()[1]=='none']
                 #branch points
                 self.do_not_delete=self.do_not_delete+[comp for comp in self.children.keys() if self.children[comp]>1]
                 print ("do not delete these parent branch compartments:", self.do_not_delete)
 
+        #replace parent values of compartments whose original parents were zero-point compartments and removed 
+        def replace_par(self,parent_dict, counter, line, parent, child):
+                #so this changes each line, not the parent dictionary itself
+                print('Original line', line)
+                if line[parent] in parent_dict:
+                        print('Line child', line[child], 'Line parent', line[parent])
+                        counter = counter + 1
+                        print(counter)
+                        line[parent] = parent_dict[line[parent]]
+                        self.replace_par(parent_dict, counter, line, parent, child)
+                        #so will var line be updated and rest of arguments remain the same as recursion ocurrs?
+                else:
+                        if counter>0:
+                                print('fixed line', counter,line)
+                        return line
+        
 def calc_lambda (type1, RM, RI, CM, F):
 	tm = RM * CM #time constant
 	dc_factor = math.sqrt(RM/(RI*4.0))*1000 #1000 is for unit conversion to microns 
 	partial_ac= 2.0*math.pi*F*tm 
- 	ac_factor = dc_factor * math.sqrt(2.0/(1.0+math.sqrt(1.0+math.pow(partial_ac,2.0))))
+        ac_factor = dc_factor * math.sqrt(2.0/(1.0+math.sqrt(1.0+math.pow(partial_ac,2.0))))
         return ac_factor 
 
-def calc_length(comp):
+def calc_length(comp): #is this the same as the distance calculated above?
         x=float(comp[2])
         y=float(comp[3])
         z=float(comp[4])
@@ -135,7 +188,7 @@ def calc_electrotonic_len(comp,factor):
                 print('    calc_len comp %s lambda=%.1f len=%.3f L=%.5f' % (comp[0],lamb, length, length/lamb))
         return length/lamb
 
-def write_line(out_file,replace_parent,comp,numcomps):
+def write_line(out_file,replace_parent,comp,numcomps): # do i need this as well?
 	if(replace_parent.has_key(comp[1])): # if parent refers to deleted voxel, replace the parent with the deleted voxels parent
                 newline=comp[0]+" "+replace_parent[comp[1]]+"   "+comp[2]+"  "+comp[3]+"  "+comp[4]+"  "+comp[5]+" \n"
 		print('!!!!old:',comp,'deleted:',comp[1], 'new:',newline)
@@ -207,12 +260,12 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
         num_comps=0
         ######## type = 1 removes 0 length compartments, this is done in the class, so just write file
 	if(type1 == "0"):
-	        for line in m.linelist:
+	        for line in m.lines:
                         m.outfile.write(line)
                         num_comps=num_comps+1
         ####### type = "expand" takes long compartments and subdivides into multiple "segments"
         if (type1 == "expand"):
- 	        for line in m.linelist:
+ 	        for line in m.lines:
 		        comp1 = line.split()
                         L_comp1=calc_electrotonic_len(comp1,lambda_factor)
                         print ("max_len", max_len, "L", L_comp1)
@@ -229,18 +282,18 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 num_comps=write_line(m.outfile,m.replace_parent,comp1,num_comps)
                                 if info:
                                         print ("OK", comp1[0])
-        ######## type = radii condenses branches with similar radius and combined electronic length < 0.1 lambda
-	if (type1 == "radii"):    #if rad_diff = 0, only condenses branches with same radius
+        ######## type = condense condenses branches with similar radius and combined electronic length < 0.1 lambda
+	if (type1 == "condense"):    #if rad_diff = 0, only condenses branches with same radius
 	        condense = []
 	        Ltot = 0
 	        surface_tot = 0
-	        for line in m.linelist:
+	        for line in m.lines:
 		        comp1 = line.split()
                         if debug:
                                 print ('**** begin', comp1[0])
- 		        line_num = m.linelist.index(line)
-                        if line_num <= (len(m.linelist)-2):
-			        comp2 = m.linelist[line_num+1].split()
+ 		        line_num = m.lines.index(line)
+                        if line_num <= (len(m.lines)-2):
+			        comp2 = m.lines[line_num+1].split()
                                 len_comp1=calc_electrotonic_len(comp1,lambda_factor)
                                 len_comp2=calc_electrotonic_len(comp2,lambda_factor)
                         if len(condense):
@@ -284,7 +337,23 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                         if info:
                                                 print ('not condensing',len(condense),Ltot, comp1[0], "rad", rad_diff,delta_rad)
         print ("finished,", num_comps, "output compartments")
+        #if type1==('radii'):
+        '''
+        def diameter_create(self.linelist):
+                #I need to somehow put a check to see if all subsequent values of diameter are equal with each other (or zero)
+                for num,line in enumerate(self.linelist):
+                         for id, val in enumerate(line):
+                                if id > 1:
+                                        line[id] = float(line[id])
+                d1 = 0.001 * L + 0.87
+                d2 = dp * np.exp(-l * 0.08)
+                d = np.max(d1,d2)
 
+                #where:
+                #L = dendritic length of branch
+                #dp = diameter of parent node
+                #l = distance to parent node
+        '''
 if __name__ == '__main__':
         #set default parameters
         rm = 4.00 #ohms-m^2 
@@ -293,12 +362,12 @@ if __name__ == '__main__':
         max_len = 0.1 #electrotonic length
         f = .1 #Hz
         rad_diff=0.1
-        type1 = "radii"
+        type1 = "condense"
         #
         #set up argument parsers
         parser = argparse.ArgumentParser()
         parser.add_argument('--file')
-	parser.add_argument('--type', choices={'0', 'radii','expand'}, default='radii')
+	parser.add_argument('--type', choices={'0', 'condense','expand'}, default='condense')
 	parser.add_argument('--rad_diff', default=rad_diff, type=float)
 	parser.add_argument('--rm', default=rm, type=float)
 	parser.add_argument('--ri', default=ri, type=float)
@@ -320,6 +389,39 @@ if __name__ == '__main__':
         #calculate lambda
         lambd_factor=calc_lambda(h.type, h.rm, h.ri, h.cm, h.f)
         print('params', h, 'lambda', lambd_factor)
-        #condense the compartment
+        #Optionally, can condense multiple comps into one, expand large comp into multiple, or assign radii when there are none
 	condenser(newmorph, h.type, h.max_len, lambd_factor, h.rad_diff)
 
+
+'''extra code'''
+'''
+     if any()value in parent_dict.values() == key in parent_dict.keys():
+                        value = parent_dict[key]
+                        
+                for key, value in parent_dict.items():
+                        if key == value:
+                                #replace value with key-ed value
+                                value = key[value]
+                        #how to detect if one 'self' would equal another's parent???
+                #ideally by changing the parent_dict
+                #I can use the new dictionary and change the values in my 'old' code below
+                print(parent_dict)
+'''
+'''
+                #converts parent dict to list --> still trying to just replace parent from dictionary in list BEFORE changing lines
+                for key, value in parent_dict.items():
+                        temp = [key,value]
+                        parent_list.append(temp) #as list of lists
+                
+                #it seems like I would need to do recursion here as well... huh
+                #change dictionary values here
+                if #there is a match between separate keys and values
+                for i, item in enumerate(parent_list):
+                for j, val in enumerate(item):
+                print(j)
+                
+                for num, line in enumerate(self.linelist):
+                        if line[parent] != 'none':
+                                #change line values here...
+                #what if we combined list-format of dictionary and replacing dictionary values instead?
+'''
