@@ -46,9 +46,11 @@ import sys
 import math
 import argparse
 import numpy as np
-
+import re 
 debug=0   #default is 0
 info=0    #default is 1
+#I will define global vars. for location of data whenever we use line-by-line organization
+child = 0; parent = 1; X = 2; Y = 3; Z = 4; dia = 5; dis = 6
 
 class morph:
         def __init__(self,pfile):
@@ -68,46 +70,47 @@ class morph:
                 '''
                 self.pfile=pfile
                 self.linelist = []
-                lines=open(pfile, 'r').readlines()
-                #skip parameters (*), comments (/) and blank lines (\n or \r)
-                self.lines=[line for line in lines if (line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r')]
                 out_name=pfile.split('.p')[0]+'out.p'
                 self.outfile = open(out_name, 'w')
+                lines=open(pfile, 'r').readlines()
+                #writes to new output file the original parameter values
+                #skips writing data lines for now (lines may need to be adjusted if zero-point comp, expanded, etc)
+                for line in lines:
+                        searchObj = re.search('soma', line)
+                        if searchObj:
+                                break
+                        self.outfile.write(line)
+                        print('from lines', line)
+                #skip parameters (*), comments (/) and blank lines (\n or \r)
+                self.lines=[line for line in lines if (line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r')]
                 '''
                 Reads in line by line than Converts to list of list
                 '''
                 for num, line in enumerate(self.lines):
                         self.linelist.append(line)
                         self.linelist[num] = self.linelist[num].split()
-                        self.outfile.write(line)
                 '''
-                Conversion from strings --> floats takes place here
+                Conversion from strings --> floats takes place here (except Parent and Child)
                 '''
-                #.p file child and parent are STRINGS --> keep as strings for now
-                #convert rest str. values into float (xyz, dia and dis)
                 for num,line in enumerate(self.linelist):
                         for id, val in enumerate(line):
                                 if id > 1:
                                         line[id] = float(line[id])
-                #print(self.linelist)
-                #.swc files have child/parent saved as int instead of names, maybe read as FLOATS??
         
         def remove_zeros(self):
-                #set globals here for dictionary-like retrieval of split data in linelist
-                child = 0; parent = 1; x = 2; y = 3; z = 4; dia = 5; dis = 6
-                newlines=[]; parent_dict = {}; parent_list = [] #may want to convert parent dict to list
+                newlines=[]; parent_dict = {}; parent_list = [] 
                 print(len(self.linelist))
                 for line in self.linelist:
                         print(line)
                 for num,line in enumerate(self.linelist):
                         #maybe we could calculate distance HERE to then help with REMOVING ZEROS later
-                        distance = np.sqrt((line[x])**2 + (line[y])**2 + (line[z])**2)
+                        distance = np.sqrt((line[X])**2 + (line[Y])**2 + (line[Z])**2)
                         line.append(distance)
                 '''
                 Remove Zeroes and Replace oldparent id with newparent id
                 '''
                 for num,line in enumerate(self.linelist):
-                        #removes (does not update new-list) any compartments with 0 distance or diameter OTHER THAN soma
+                        #removes any compartments with 0 distance or diameter OTHER THAN soma
                         if((line[dia] == 0  or line[dis] == 0) and line[parent] != 'none'):
                                 #relabel remaining children to previous parent (or compartment that is deleted)
                                 #i.e. if                    4,3 0 0 0 <--- needs to be removed
@@ -120,21 +123,16 @@ class morph:
                 if parent_dict: #checks if parent_dict has any items, THEN does recursion
                         print('Zero point compartments removed; remaining comparments require parent-update for reconnection')
                         print(parent_dict)
-                        #maybe put a 'limit' if too many zero-point compartments exists in a single morphology
                         parent_len = len(parent_dict.items())
-                        
                         if parent_len < 100: #just a placeholder for now; i.e. 100 zero-point compartments
                                 for num, line in enumerate(self.linelist):
-                                        #this should only iterate for each line in linelist
                                         if line[parent] != 'none':
-                                                counter = 0 #in this organization the counter comes back to 0 for each line
-                                                line = self.replace_par(parent_dict, counter, line, parent, child)
+                                                counter = 0 
+                                                line = self.replace_par(parent_dict, counter, line)
                                 print(len(newlines))
                                 self.linelist = newlines
                         else:
                                 print('Many zero-point compartments --> check morphology file')
-
-        #new function to calculate diameter from distance
 
         def ID_branches(self):
                 for line in self.lines:
@@ -152,19 +150,17 @@ class morph:
                 print ("do not delete these parent branch compartments:", self.do_not_delete)
 
         #replace parent values of compartments whose original parents were zero-point compartments and removed 
-        def replace_par(self,parent_dict, counter, line, parent, child):
-                #so this changes each line, not the parent dictionary itself
+        def replace_par(self,parent_dict, counter, line):
                 print('Original line', line)
                 if line[parent] in parent_dict:
                         print('Line child', line[child], 'Line parent', line[parent])
                         counter = counter + 1
                         print(counter)
                         line[parent] = parent_dict[line[parent]]
-                        self.replace_par(parent_dict, counter, line, parent, child)
-                        #so will var line be updated and rest of arguments remain the same as recursion ocurrs?
+                        self.replace_par(parent_dict, counter, line)
                 else:
                         if counter>0:
-                                print('fixed line', counter,line)
+                                print('fixed line', counter ,line)
                         return line
         
 def calc_lambda (type1, RM, RI, CM, F):
@@ -260,9 +256,14 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
         num_comps=0
         ######## type = 1 removes 0 length compartments, this is done in the class, so just write file
 	if(type1 == "0"):
-	        for line in m.lines:
-                        m.outfile.write(line)
-                        num_comps=num_comps+1
+                for line in m.linelist:    #writes converted linelist into ouput file
+                        del line[dis]      #added distance val. for each line --> must remove when writing to file
+                        for val in line:
+                                val = str(val)        
+                                m.outfile.write(val)
+                                m.outfile.write(' ')
+                        m.outfile.write('\n') #added in each compartment as new line (thanks Dan!)
+                        
         ####### type = "expand" takes long compartments and subdivides into multiple "segments"
         if (type1 == "expand"):
  	        for line in m.lines:
@@ -391,7 +392,6 @@ if __name__ == '__main__':
         print('params', h, 'lambda', lambd_factor)
         #Optionally, can condense multiple comps into one, expand large comp into multiple, or assign radii when there are none
 	condenser(newmorph, h.type, h.max_len, lambd_factor, h.rad_diff)
-
 
 '''extra code'''
 '''
