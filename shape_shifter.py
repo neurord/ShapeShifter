@@ -230,6 +230,8 @@ def to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,
         comp1 = line
         if len(condense):
                 #cannot add any additional compartments.  Condense the set
+                for row, unit in enumerate(condense):
+                        print(condense[row][child])
                 x,y,z,diameter=calc_newcomp(condense,surface_tot,Ltot,lambda_factor)
                 if info:
                         print ('#######condense', condense, 'stop before', comp2[child])
@@ -250,8 +252,8 @@ def to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,
 def condenser(m, type1, max_len, lambda_factor, rad_diff):
         num_comps=0
         ######## type = '0' removes 0 length compartments, this is done in the class, so just write file
-	if(type1 == "0"):  #testing with convertted .swc file to .p file works with type'0'
-                for line in m.linelist:    #<-- this will be the same in type = 'condense' and type = 'radii'
+	if(type1 == "0"): 
+                for line in m.linelist:
                         write_file(m.outfile, line)
 
         ####### type = "expand" takes long compartments and subdivides into multiple "segments"
@@ -288,18 +290,27 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 #write statement for entire line_list
 
         ######## type = condense condenses branches with similar radius and combined electronic length < 0.1 lambda
-        #look to see if this is condensing
 	if (type1 == "condense"):    #if rad_diff = 0, only condenses branches with same radius
+                #cvapp converts .swc to .p file format AND from absolute to relative coordinates 
                 print('***This is the start of the condense-type***')
-	        Ltot = 0; surface_tot = 0; condense = [] #list to hold compartments to be condensed
-                write_file(m.outfile, m.linelist[0]) #write soma line to file --> assumed not to be condensed
-	        for num,line in enumerate(m.linelist[1:-1]):
+                branch_points = []                                      #comp2[parent] IS the branching compartment
+                for num,line in enumerate(m.linelist):
+                        comp1 = line
+                        if num <= (len(m.linelist)-2):
+			        comp2 = m.linelist[num+1]
+                        if comp2 and comp2[parent] != comp1[child]:                         
+                                if not comp2[parent] in branch_points:     #this code creates the full branch point list 
+                                        branch_points.append(comp2[parent])
+                                        print('branch point added = ', comp2[parent])
+                Ltot = 0; surface_tot = 0; condense = [] #list to hold compartments to be condensed
+                for num,line in enumerate(m.linelist):
+                        comp1 = line
                         if debug:
                                 print ('**** begin', line[child])
-                        comp1 = line
-			comp2 = m.linelist[num+2]
-                        len_comp1=calc_electrotonic_len(comp1,lambda_factor)
-                        len_comp2=calc_electrotonic_len(comp2,lambda_factor)
+                        if num <= (len(m.linelist)-2):
+			        comp2 = m.linelist[num+1]
+                                len_comp1=calc_electrotonic_len(comp1,lambda_factor)
+                                len_comp2=calc_electrotonic_len(comp2,lambda_factor)
                         if len(condense): #this already assumes condense has values
                                 delta_rad=abs((condense[0][dia] - comp2[dia])/condense[0][dia])
                                 tot_len=len_comp2+Ltot
@@ -307,10 +318,10 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 delta_rad=abs((comp1[dia] - comp2[dia])/comp1[dia])
                                 tot_len=len_comp1 + len_comp2
                         #rad_diff default is 0.1, max_len default is 0.1
-                        print('***comps to be condensed: ', comp1[child],comp2[child], '***')
                         if info:
                                 print ('comp1', comp1[child], comp1[parent], 'comp2', comp2[child], comp2[parent])
-			if(delta_rad <= rad_diff and comp2[parent]==comp1[child] and tot_len < max_len):
+			if(delta_rad <= rad_diff and comp2[parent]==comp1[child] and tot_len < max_len and comp1[child] not in branch_points):
+                                print('***comps to be condensed: ', comp1[child],comp2[child], '***')  #branch point list has to be created before this point
                                 if info:
                                         print('delta_rad <= rad_diff for :', 'comp1', comp1, 'comp2', comp2)
                                 length1 = math.sqrt(comp1[X]**2 + comp1[Y]**2 + comp1[Z]**2)
@@ -325,16 +336,11 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 #always add the 2nd compartment to set of comartments to be condensed
                                 condense.append(comp2)
                                 Ltot=Ltot+len_comp2
-                                surface_tot=surface_tot+(math.pi * comp2[dia] * length2)
+                                surface_tot=surface_tot+(math.pi * comp2[dia] * length2)    
 			else:
                                 condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,comp2,m.outfile)
-                condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,comp2,m.outfile)
         print ("finished,", num_comps, "output compartments")
-
-        #okay so final comments on 'condense' output
-        #some compartments are connected to now non-existing ones...
-        #some compartments actually connected to themselves...
-        #still seem to have the issue with the final line...
+        print(branch_points)
         '''
         if (type1 =="radii"):
                 #maybe I need to make a branching-list...
