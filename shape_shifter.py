@@ -171,7 +171,7 @@ def calc_electrotonic_len(line,factor):
         return line[dis]/lamb
 
 def write_file(output, line):
-        write_line = [str(val) for val in line[0:-1]]
+        write_line = [str(val) for val in line[0:6]]
         write_line = ' '.join(write_line) #converts from list of strings to single string
         output.write(write_line + '\n')   #writes every compartment as new line
 
@@ -292,7 +292,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
         ######## type = condense condenses branches with similar radius and combined electronic length < 0.1 lambda
 	if (type1 == "condense"):    #if rad_diff = 0, only condenses branches with same radius
                 #cvapp converts .swc to .p file format AND from absolute to relative coordinates 
-                print('***This is the start of the condense-type***')
+                '''This is branch point code'''
                 branch_points = []                                      #comp2[parent] IS the branching compartment
                 for num,line in enumerate(m.linelist):
                         comp1 = line
@@ -302,6 +302,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 if not comp2[parent] in branch_points:     #this code creates the full branch point list 
                                         branch_points.append(comp2[parent])
                                         print('branch point added = ', comp2[parent])
+                print('***This is the start of the condense-type***')
                 Ltot = 0; surface_tot = 0; condense = [] #list to hold compartments to be condensed
                 for num,line in enumerate(m.linelist):
                         comp1 = line
@@ -343,12 +344,11 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
         print(branch_points)
         '''
         if (type1 =="radii"):
-                #maybe I need to make a branching-list...
                 for num, line in enumerate(m.linelist[1:]):
-                        #assuming soma diameter does not need to be changed
+                        dL = len('line to original branch point?')
                         d1 = 0.001 * line[dis] + 0.87
                         dp = float(m.linelist[num-1][dia])
-                        l = abs(line[dis] - m.linelist[num-1][dis]) #don't know if this here is correct implementation of l
+                        l = line[dis]
                         d2 = dp * np.exp(-l * 0.08)
                         if d1 > d2:
                                 line[dia] = d1
@@ -359,13 +359,11 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 for line in m.linelist:    #<-- this will be the same in type = 'condense' and type = 'radii'
                         write_file(m.outfile, line)
                 #where: Lindroos et al. 2018 Basal Ganglia Neuromodulation
-                #L = dendritic length of branch <--- this is length of dendritic branch from the particular compartment
+                #L = dendritic length of branch rooted from given node <--- this is a bit confusing from the source article (extends away from soma or towards it?)
                 #dp = diameter of parent node
-                #l = distance to parent node <--- I think distance is implemented correctly
-
-                'where L is the total dendritic length of the branch rooted at the given node, dp is the diameter of the parent node (in the dendrite or soma for the first node of the trunk), and l is the distance to the parent node.'
+                #l = distance to parent node
         '''
-                
+        
 if __name__ == '__main__':
         #set default parameters
         rm = 4.00 #ohms-m^2 
