@@ -1,6 +1,7 @@
 '''<Condenses .p files of neuron traces to maintain specific lambda (ac or dc) and removes 0 length compartments.>
     Copyright (C) <2016>  <Saivardhan Mada>
     Copyright (C) <2017>  <Avrama Blackwell>
+    Copyright (C) <2019> <Jonathan Reed>
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -19,6 +20,7 @@
 #          electrotonic length not to exceed max_len* lambda.
 #  'expand' to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
 #           electrotonic length of subdivided compartments do not exceed max_len* lambda
+#  'radii'    to change the diameter value depeneding on the distance to the end of the longest branch
 # can specify alternative values to default rm [4], cm [0.01], ri [2.5] units are SI
 # can specify frequency (--f) for ac lambda calculation, current default is 0.1 hz
 # can specify maximum electrotonic length (--max_len) current default is 0.1, specify 0 to use dc lambda
@@ -48,7 +50,7 @@ import numpy as np
 debug=0   #default is 0
 info=0    #default is 1
 #Globals for compartment values stored in linelist
-child = 0; parent = 1; X = 2; Y = 3; Z = 4; dia = 5; complen = 6; end_dis = 7 #make all caps
+child = 0; parent = 1; X = 2; Y = 3; Z = 4; dia = 5; complen = 6; end_dis = 7 #globals make all caps
 
 class morph:
         def __init__(self,pfile):
@@ -68,12 +70,14 @@ class morph:
                 for line in lines:
                         if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r':
                                 if len(line) > 5:                           #alternative code instead of list comprehension below
-                                        self.linelist.append(line.split())  #empty lines between text actually have len = 2, so they are not caught in len = None
+                                        self.linelist.append(line.split())  #the empty lines between text actually have len = 2, so they are not caught in len = None
                                 else:
                                         self.outfile.write('\n')
                                 #print('a',len(line),line)
                         else:
                                 self.outfile.write(line) #writes commented portion of original file to created file
+                                #print('b',len(line),line)
+                #self.linelist = [x for x in self.linelist if x]  #fixes prior error which added empty lists to linelist, see comments above
                 
                 '''Conversion from strings --> floats takes place here (XYZ and diameter)'''
                 for num,line in enumerate(self.linelist):
@@ -102,12 +106,12 @@ class morph:
                 else:
                         print('***Soma comp. detected w/o XYZ coordinates 0,0,0***')
                         
-        def remove_zeros(self):
+        def remove_zeros(self): #change distance to comp_len
                 newlines=[]; parent_dict = {}
                 '''Calculate line distance'''
                 for line in self.linelist:
                         distance = np.sqrt((line[X])**2 + (line[Y])**2 + (line[Z])**2)
-                        line.append(distance)
+                        line.append(distance) #may move down to type = radii since not used elsewhere
                         
                 '''Remove Zeroes and Replace oldparent id with newparent id'''
                 for line in self.linelist:
@@ -165,7 +169,9 @@ def calc_electrotonic_len(line,factor):
         return line[complen]/lamb
 
 def write_file(output, line):
-        write_line = [str(val) for val in line[0:6]]
+        for x in range(X,complen):
+                line[x] = round(float(line[x]),4)
+        write_line = [str(val) for val in line[child:complen]]
         write_line = ' '.join(write_line) #converts from list of strings to single string
         output.write(write_line + '\n')   #writes every compartment as new line
 
@@ -255,13 +261,13 @@ def end_comp(linelist, parents):
         return end_points
 
 def condenser(m, type1, max_len, lambda_factor, rad_diff):
+        num_comps=0
         ######## type = '0' removes 0 length compartments, this is done in the class, so just write file
         if(type1 == "0"): 
                 for line in m.linelist:
                         write_file(m.outfile, line)
 
         ####### type = "expand" takes long compartments and subdivides into multiple "segments"
-        #incomplete as of 02/06/2019
         if (type1 == "expand"):
                 '''Expands linelist to include new created segments'''
                 new_par = {} #holds all compartments whose parent needs to change with included segments
@@ -347,34 +353,38 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                         line.append(0) #will hold temporary value of distance to end of longest branch at given compartment as line[end_dis] is filled
                 for line in reversed(m.linelist):
                         if line[child] in end_points:
+                                #initialize dis to end
+                                #update par_comp
+                                #call func.
                                 dis_to_end = 0 #will be temporary value to added to end_dis as loop moves towards soma compartment
-                                dis_to_end = dis_to_end + line[complen]
-                                line[end_dis] = dis_to_end
+                                line[end_dis] = line[complen]
+                                par_comp = line[complen]/2
+                                dis_to_end = dis_to_end + line[complen]/2
                                 print('endpoint found at', line[child], line[end_dis])                 #if line is endpoint --> begins end branch length
-                        elif line[child] in branch_points:#if line is branchpoint either:
-                                dis_to_end = dis_to_end + line[complen]
-                                if line[end_dis] == 0:                                                            #add to end branch length
-                                        line[end_dis] = dis_to_end                           #if already has branch length (another branch)
-                                        print('branchpoint found at', line[child], line[end_dis])                 #compare which branch length is larger
-                                elif dis_to_end > line[end_dis]:
-                                        line[end_dis] = dis_to_end
+                        elif line[child] in branch_points:                                             #if line is branchpoint either:
+                                if line[end_dis] == 0 or dis_to_end > line[end_dis]:                                                            #add to end branch length
+                                        line[end_dis] = dis_to_end + line[complen]/2 + par_comp                                #if already has branch length (another branch)
+                                        print('branchpoint found at', line[child], line[end_dis])
+                                        dis_to_end = dis_to_end + line[complen]/2 + par_comp
+                                        par_comp = line[complen]/2                                     #compare which branch length is larger
  
                         else:                                                                           #if line is normal compartment --> add end branch length 
-                                dis_to_end = dis_to_end + line[complen]
+                                dis_to_end = dis_to_end + line[complen]/2 + par_comp
+                                par_comp = line[complen]/2
                                 line[end_dis] = dis_to_end 
 
-                for line in m.linelist[1:]:
+                for num, line in enumerate(m.linelist[1:]):
                         #assuming soma diameter does not need to be changed
                         d1 = 0.001 * line[end_dis]  + 0.87
                         dp = [x[dia] for x in m.linelist if x[child] == line[parent]] 
                         dp = dp[0]             #a compartment can be a parent for multiple children, but each will only have one parent itself
-                        l = line[complen]
-                        d2 = dp * np.exp(-l * 0.08)
+                        l = abs(line[complen])
+                        d2 = dp * np.exp(-l * 0.08) #proximal diameters not reproduced accurately <-- put in commit message
                         line[dia] = max(d1,d2)
+                        
                 if info:
                         print('self', '| parent', '| compartment diameter', '| compartment distance to end')
                 for line in m.linelist:
-                        line[dia] = round(line[dia],4)
                         if info:
                                 print(line[child],line[parent],line[dia],line[end_dis])
                         write_file(m.outfile, line)                       #will remove temporary values of complen and end branch distance as file is created
