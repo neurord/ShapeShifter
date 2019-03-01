@@ -1,5 +1,7 @@
 '''<Reformats .swc data file format into .p file format.>
-    Copyright (C) <2019> <Jonathan Reed>
+   <Output .p file can be processed through shape_shifter.py for morphological modifications>
+    Copyright (C) <2019>  <Jonathan Reed>
+
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -11,12 +13,12 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.'''
 
-#Usage: python convert_swc_pfile.py --file dSPN-Sham-A1S1N1.CNG.swc
-#Output: dSPN-Sham-A1S1N1.CNGconvert.p
+#Usage:  python convert_swc_pfile.py --file filename.swc
+#Output: filenameconvert.p
 
 #George Mason University
 #Jonathan Reed
-#February 14, 2019
+#March 1, 2019
 
 import argparse
 import datetime
