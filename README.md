@@ -4,7 +4,55 @@ shape_shifter is a morphology converter which takes in Genesis (.p) files of neu
 
 **input files**
 
-Morphology files can be attained through http://neuromorpho.org/ and these .swc files on NeuroMorpho can be converted to .p files using cvapp, provided in this repository. We strongly recommend that the 1st three soma lines in the cvapp output file be combined into a single coma compartment by hand prior to running shape_shifter, because cvapp output of neuromorpho files typically has 3 soma compartments, with the first, parent compartment (which cannot be eliminated by shape_shifter) having zero size. In addition, you may need to remove blank lines from the .p file to avoid error messages.
+Morphology files can be attained through http://neuromorpho.org/ and these .swc files on NeuroMorpho can be converted to .p files automatically using convert_swc_pfile.py.  We strongly recommend using this instead of cvapp as parsing issues are common causing a freeze of the program.  
+
+**convert_swc_pfile usage**
+ Input:  python convert_swc_pfile.py --file filename.swc
+ Output: filenameconvert.p
+
+**shape_shifter usage**
+ Input:  python shape_shifter.py --file 'filename.p' --type 'radii'
+ Output: filenameout.p
+
+type can be:
+  '0'        just remove compartments of size 0
+  'condense' combine compartments of similar radius (specify --rad_diff 0 to only combine identical radii),
+               electrotonic length not to exceed max_len* lambda.
+  'expand'   to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
+               electrotonic length of subdivided compartments do not exceed max_len* lambda
+  'radii'    to change the diameter value depeneding on the distance to the end of the longest branch
+
++ optional arguments:
+
+  - can specify alternative values to default rm [4], cm [0.01], ri [2.5] for calculating lambda, units are SI
+  - can specify frequency (--f) for ac lambda calculation, default is 0.1 hz, specify 0 to use dc lambda
+  - can specify maximum electrotonic length (--max_len), default is 0.1
+  - can specify criteria maximum difference (rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
+  
+change info or debug parameter to get more or less information while running program
+           
+
+Ideal Usage Scenario
+============
+neuromorpho.org morphology files often inaccurate compartment (node) diameters
+
+convert .swc file --> .p file using convert_swc_pfile.py
+ Input:   python convert_swc_pfile.py --file filename.swc
+ Output:  filenameconvert.p
+
+run shape_shifter.py through type radii for more accurate diameters
+ Input:   python shape_shifter.py --file filenameconvert.p --type radii
+ Ouput:   filenameconvertout.p
+ 
+run shape_shifter.py again through type condense to combine similar compartments together for future simulation
+ can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
+ Input:   python shape_shifter.py --file filenameconvert.p --type condense --f 100 --rad_diff 0
+ Ouput:   filenameconvertoutout.p
+
+CVAPP - Description
+============
+Mentioned above, 
+If using cvapp, provided in this repository. We strongly recommend that the 1st three soma lines in the cvapp output file be combined into a single coma compartment by hand prior to running shape_shifter, because cvapp output of neuromorpho files typically has 3 soma compartments, with the first, parent compartment (which cannot be eliminated by shape_shifter) having zero size. In addition, you may need to remove blank lines from the .p file to avoid error messages.
 
 **CVAPP usage**
 
@@ -22,24 +70,3 @@ Morphology files can be attained through http://neuromorpho.org/ and these .swc 
   - changing the 1st soma comp x, y, z to be equal the sum of the x, y, z values of the 2nd and 3d soma comps
   - delete the 2nd and 3d soma comps
 5. run shape_shifter
- 
-**shape_shifter usage**
-
-python shape_shifter.py --file 'filename.p' --type 'radii'
-+ type can be:
-
-  - '0' - just remove compartments of size 0
-  - 'radii' - combine compartments of similar radius (specify 0 for rad_diff to only combine identical radii),
-          electrotonic length of condensed compartments do not exceed max_len* lambda 
-  - 'expand' - to change single, long compartments (e.g. a Neuron software section) into multiple smaller compartments (e.g. Moose compartments or Neuron segments). Resulting electrotonic length of subdivided compartments does not exceed max_len* lambda
-
-+ optional arguments:
-
-  - can specify alternative values to default rm [4], cm [0.01], ri [2.5] for calculating lambda, units are SI
-  - can specify frequency (--f) for ac lambda calculation, default is 0.1 hz, specify 0 to use dc lambda
-  - can specify maximum electrotonic length (--max_len), default is 0.1
-  - can specify criteria maximum difference (rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
-  
-change info or debug parameter to get more or less information while running program
-           
-
