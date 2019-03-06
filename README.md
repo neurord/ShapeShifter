@@ -11,16 +11,19 @@ Morphology files can be attained through http://neuromorpho.org/ and these .swc 
  Output: filenameconvert.p
 
 **shape_shifter usage**
- Input:  python shape_shifter.py --file 'filename.p' --type 'radii'
+ Input:  
+ ``` 
+ python shape_shifter.py --file 'filename.p' --type 'radii' 
+ ```
  Output: filenameout.p
 
 type can be:
-  '0'        just remove compartments of size 0
-  'condense' combine compartments of similar radius (specify --rad_diff 0 to only combine identical radii),
+  - '0'        just remove compartments of size 0
+  - 'condense' combine compartments of similar radius (specify --rad_diff 0 to only combine identical radii),
                electrotonic length not to exceed max_len* lambda.
-  'expand'   to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
+  - 'expand'   to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
                electrotonic length of subdivided compartments do not exceed max_len* lambda
-  'radii'    to change the diameter value depeneding on the distance to the end of the longest branch
+  - 'radii'    to change the diameter value depeneding on the distance to the end of the longest branch
 
 + optional arguments:
 
@@ -36,18 +39,30 @@ Ideal Usage Scenario
 ============
 neuromorpho.org morphology files often inaccurate compartment (node) diameters
 
-convert .swc file --> .p file using convert_swc_pfile.py
- Input:   python convert_swc_pfile.py --file filename.swc
- Output:  filenameconvert.p
++ convert .swc file --> .p file using convert_swc_pfile.py
 
-run shape_shifter.py through type radii for more accurate diameters
- Input:   python shape_shifter.py --file filenameconvert.p --type radii
- Ouput:   filenameconvertout.p
+ - Input:  
+ ``` 
+ python convert_swc_pfile.py --file filename.swc 
+ ```
+ - Output:  filenameconvert.p
+
++ run shape_shifter.py through type radii for more accurate diameters
+
+ - Input:   
+ ``` 
+ python shape_shifter.py --file filenameconvert.p --type radii
+ ```
+ - Ouput:   filenameconvertout.p
  
-run shape_shifter.py again through type condense to combine similar compartments together for future simulation
++ run shape_shifter.py again through type condense to combine similar compartments together for future simulation
  can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
- Input:   python shape_shifter.py --file filenameconvert.p --type condense --f 100 --rad_diff 0
- Ouput:   filenameconvertoutout.p
+ 
+ - Input:   
+ ``` 
+ python shape_shifter.py --file filenameconvert.p --type condense --f 100 --rad_diff 0 
+ ```
+ - Ouput:   filenameconvertoutout.p
 
 CVAPP - Description
 ============
