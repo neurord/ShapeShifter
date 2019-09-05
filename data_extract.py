@@ -18,7 +18,7 @@
 
 #George Mason University
 #Jonathan Reed
-#Sep 3, 2019
+#Sep 5, 2019
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -66,8 +66,6 @@ if not os.path.exists(path):
 else:
     path = path + '*CNG.swc'
     for filename in glob.glob(path):
-        print(os.path.basename(filename))
-        #filename = os.path.basename(filename)              
         swc_tree = btmorph.STree2()                         
         swc_tree.read_SWC_tree_from_file(str(filename))     #reads in .swc file, each subsequent node within SNode2 designation
         stats = btmorph.BTStats(swc_tree)                   #obtains morphometric data from each compartment separate from SNode2
@@ -180,11 +178,13 @@ else:
                     #print(item)
                     print(item[BRANCH_POINT])
             '''  
-        filename = os.path.basename(filename) #places extract files in location of btmorph command
-        out_name = filename.split('.swc')[0] + '_extract.txt'
-        outfile = open(out_name,'w')
+        dirname = os.path.dirname(filename)
+        filename = os.path.basename(filename)
+        filename = filename.split('.swc')[0] + '_extract.txt'
+        completename = dirname + '/' + filename
+        outfile = open(completename,'w')
         outfile.write('*Original .swc file : ')
-        outfile.write(filename + '\n')
+        outfile.write(filename.split('_extract.txt')[0] + '.swc'  + '\n')
         outfile.write('*Extracted .swc data on : ')
         outfile.write(str(datetime.datetime.now()) + '\n')
         outfile.write('\n')
@@ -197,9 +197,5 @@ else:
             outfile.write(str(write_line) + '\n')
 
         print('File Created  :  ')
-        print(out_name)
+        print(filename)
         outfile.close()
-
-        #next step is to set up graphing of the values to diameter to see relationships
-
-
