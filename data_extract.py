@@ -91,31 +91,35 @@ else:
             local_list = find_parent(swc_tree, self_node[0], stats, local_list)     #end_points sent to function find_parent for Degree 1 nodes
                 
         for num in degree_list[1:]:
-        #for num in degree_list[1:2]:
             for item in stats._bif_points:
                 if item.index not in soma and stats.degree_of_node(item) == num:
                     #these are the bifurication points
                     self_node = [c for c in local_list if c[COMP] == item]
-                    child_1 = item.children[0]
-                    child_2 = item.children[1]
-                    end_1 = [c[END_POINT] for c in local_list if c[COMP] == child_1] #finds child from local_list and saves correct end_point
-                    end_2 = [c[END_POINT] for c in local_list if c[COMP] == child_2]
+                    child_1 = [c for c in local_list if c[COMP] == item.children[0]]
+                    child_2 = [c for c in local_list if c[COMP] == item.children[1]] #only goes through local list once to save line of data
+
+                    end_1 = child_1[0][END_POINT]
+                    end_2 = child_2[0][END_POINT]
                     self_node[0].append([end_1, end_2])
                     self_node[0][END_POINT] = list(flatten(self_node[0][END_POINT]))
-                    branch_1 = [c[BRANCH_POINT] for c in local_list if c[COMP] == child_1] # basically append itself + any branchpoints downstream
-                    branch_2 = [c[BRANCH_POINT] for c in local_list if c[COMP] == child_2] # branch len would be the branch_len of all children as well.
+
+                    branch_1 = child_1[0][BRANCH_POINT]
+                    branch_2 = child_2[0][BRANCH_POINT]
                     self_node[0].append([branch_1,branch_2,self_node[0][INDEX]]) #adds previous branches and self to branch list
                     self_node[0][BRANCH_POINT] = list(flatten(self_node[0][BRANCH_POINT]))
-                    #maybe also add in branch_len which is longer here... but we have the previous ends IN ITS CHILDREN>>>>
-                    path_1 = [c[PATH_TO_END] for c in local_list if c[COMP] == child_1]
-                    path_2 = [c[PATH_TO_END] for c in local_list if c[COMP] == child_2]
-                    path_1 = path_1[0] + (stats.get_pathlength_to_root(child_1) - stats.get_pathlength_to_root(self_node[0][COMP]))
-                    path_2 = path_2[0] + (stats.get_pathlength_to_root(child_2) - stats.get_pathlength_to_root(self_node[0][COMP]))
-                    branch_len = path_1 + path_2
+
+                    child_1_path = child_1[0][BRANCH_LEN]
+                    child_2_path = child_2[0][BRANCH_LEN]
+                    branch_path_1 = child_1_path + (stats.get_pathlength_to_root(child_1[0][COMP]) - stats.get_pathlength_to_root(self_node[0][COMP]))
+                    branch_path_2 = child_2_path + (stats.get_pathlength_to_root(child_2[0][COMP]) - stats.get_pathlength_to_root(self_node[0][COMP]))
+                    branch_len = branch_path_1 + branch_path_2
                     self_node[0].append(branch_len)
-                    path = path_1 if path_1 > path_2 else path_2
+
+                    end_path_1 = child_1[0][PATH_TO_END] + (stats.get_pathlength_to_root(child_1[0][COMP]) - stats.get_pathlength_to_root(self_node[0][COMP]))
+                    end_path_2 = child_2[0][PATH_TO_END] + (stats.get_pathlength_to_root(child_2[0][COMP]) - stats.get_pathlength_to_root(self_node[0][COMP]))
+                    path = end_path_1 if end_path_1 > end_path_2 else end_path_2
                     self_node[0].append(path)
-                    #here we want the btmorph pathlength funtionality
+
                     local_list = find_parent(swc_tree, self_node[0], stats, local_list)
                     
         for item in local_list:
