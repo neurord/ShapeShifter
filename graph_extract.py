@@ -12,8 +12,9 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.'''
 
-#Usage:  python graph_extract.py --path 'name_of_path' --choice 'type of choice'
-#        where morph_list is separate file with list of names of .swc files
+#Usage:  python graph_extract.py --path /name/of/path --parameters PATH_TO_END BRANCH_LEN
+#        where path is name of path to directory containing archive directories
+#        where parameters requried as capitalized in code
 #Output: morphology_extract.py
 
 #George Mason University
@@ -28,14 +29,7 @@ import argparse
 import os
 import glob
 import re
-'''
-def graph(temp_list, param):
-    for num, param in enumerate(parameter):
-        plt.figure(num)
-        plt.plot(temp_list[header[param]], temp_list['RADIUS'])
-    #plt.show()
-    #send in x,y, possibly z for either single or all files within or between certain archives
-'''    
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--path", type = str)   #may change, but for now is glob-command to look for 
 parser.add_argument("--choice", type = str, choices = {'optimize','graph'})
@@ -69,8 +63,8 @@ for d1 in dirs:
                             else:
                                 header[val] = num                          #once this is complete dictionary is created
                     elif line[0] != '*' and line[0] != ' ' and line[0] != '/n':                #for rest of data line by line
-                        temp_line = line.split()                           #for some reason empty first list for first file... 
-                        if len(temp_line) == len(header):                  #seamless way to convert certain string values to numerical ones
+                        temp_line = line.split()                           
+                        if len(temp_line) == len(header):                  
                             for point, val in enumerate(temp_line):        #Child, Type, Parent use DESCRETE numerical labelling
                                 if point != header['CHILD'] and point != header['TYPE'] and point != header['PARENT']:
                                     temp_line[point] = float(temp_line[point])
@@ -113,15 +107,6 @@ if choice == 'optimize':
     print(choice)
 if choice == 'graph':
     print(choice)
-'''
-'''
-    
-        if node == 'Basal':
-            plt.plot(combined_list[header[param]], combined_list[header['RADIUS']],'o', label = 'basal')  
-        plt.xlabel(param)                                                                               
-        plt.ylabel('Radius')
-        plt.legend()
-    plt.show()
 '''
 '''
     if len(Radius_a):
