@@ -23,6 +23,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure
 from mpl_toolkits.mplot3d import Axes3D
 
 import argparse
@@ -83,13 +84,14 @@ for d1 in dirs:
     if apical_list:
         apical_list = zip(*apical_list)                        
         archive_dict[d1]['Apical'] = apical_list
-        
+'''
 for archive in archive_dict.keys():                         #for every archive in archive dictionary
-    for param in parameters:         #for eachparameter set as argument
+    for num, param in enumerate(parameters):         #for eachparameter set as argument
         plt.figure(num)
         #for cell_type in archive_dict[archive]:
             #plt.plot(archive_dict[archive][cell_type][header[param]], archive_dict[archive][cell_type][header['RADIUS']], 'o', label = cell_type)
-        #maybe plot the different archives together as Apical and Basal 
+        #maybe plot the different archives together as Apical and Basal
+        #integrate 3D plots as well?
         if 'Apical' in archive_dict[archive].keys():
             plt.plot(archive_dict[archive]['Apical'][header[param]], archive_dict[archive]['Apical'][header['RADIUS']], 'o', label = 'Apical')
         plt.plot(archive_dict[archive]['Basal'][header[param]], archive_dict[archive]['Basal'][header['RADIUS']], 'o', label = 'Basal')
@@ -100,16 +102,46 @@ for archive in archive_dict.keys():                         #for every archive i
         plt.legend()
         plt.show()
         #plt.savefig(title + '.png')
-     
 
+for num, param in enumerate(parameters):
+    for archive in archive_dict.keys():
+        for cell_type in archive_dict[archive]:            #only potential problem here would be that basal and apical would be on the same plot
+            label = archive + ' ' + cell_type
+            plt.plot(archive_dict[archive][cell_type][header[param]], archive_dict[archive][cell_type][header['RADIUS']], 'o', label = label)
+    title = str(archive) + ' ' + str(param) #str(cell_type) 
+    plt.xlabel(str(param))
+    plt.ylabel('Radius')
+    plt.title(title)
+    plt.legend()
+    plt.show()
+'''
+for param in parameters:
+    #maybe initialize here axis = fig.axes
+    for archive in dirs:          #one plot per archive
+        #would have to initialize fig,ax = plt.subplot()
+        for num,cell_type in enumerate(archive_dict[d1]):
+            #ax[num].plot()
+            #plt.figure(num)
+            figure(num = num, figsize = (14,8))
+            label = archive + ' ' + cell_type
+            plt.plot(archive_dict[archive][cell_type][header[param]], archive_dict[archive][cell_type][header['RADIUS']], 'o', label = label)
+            title = cell_type + ' ' + str(param) + ' vs. ' + 'RADIUS' #str(root) + ' ' + str(param) #str(cell_type) 
+            plt.xlabel(str(param))
+            plt.ylabel('RADIUS')
+            plt.title(title)
+            plt.legend()
+    #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
+    #plt.clf()                                         #more explicit way to refer to figures
+    plt.show()                      #plots as intended, but some remaining issues with saving figures automatically as would appear in window
 '''
 if choice == 'optimize':
     print(choice)
 if choice == 'graph':
     print(choice)
+
 '''
 '''
-    if len(Radius_a):
+if len(Radius_a):
         #plot both apical and basal data
         plt.plot(HoSt_a, Radius_a, 'o', label = 'apical dendrite')
         plt.plot(HoSt_b, Radius_b, 'o', label = 'basal dendrite')
