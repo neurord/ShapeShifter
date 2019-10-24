@@ -22,6 +22,9 @@
 #Sep 3, 2019
 
 import numpy as np
+#import scipy
+from scipy.stats import pearsonr
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 from mpl_toolkits.mplot3d import Axes3D
@@ -34,16 +37,17 @@ import re
 parser = argparse.ArgumentParser()
 parser.add_argument("--path", type = str)   #may change, but for now is glob-command to look for 
 parser.add_argument("--choice", type = str, choices = {'optimize','graph'})
-parser.add_argument("--parameters", type = str, nargs = '+', choices = {'PARENT_RAD','NODE_DEGREE','NODE_ORDER','PATH_DIS','PATH_TO_END','NUM_ENDS','BRANCH_LEN','HS'}) 
+#parser.add_argument("--parameters", type = str, nargs = '+', choices = {'PARENT_RAD','NODE_DEGREE','NODE_ORDER','PATH_DIS','PATH_TO_END','NUM_ENDS','BRANCH_LEN','HS'}) 
 
 args = parser.parse_args()                       #would need to add additional params here manually
 path = args.path                                
 choice = args.choice
-parameters = args.parameters
+#parameters = args.parameters
 
 root, dirs, files = list(os.walk(path))[0]  #dirs are subdirectories with archive morphology files
                                             #make sure all extracted files have same parameters before graphing
-archive_dict = {}; header = {}
+archive_dict = {}; header = {}; params = {} #params will be filled once str_list params are removed from header.keys()
+str_list = ['PARENT','X','Y','Z','CHILD','TYPE']  #identifiers of particular compartments not useful for Radius comparision, would need to update if other identifiers used in .swc 
 for d1 in dirs:
     fullpath = path + d1 + '/*CNG_extract.txt'
     data_list = []; apical_list = []; basal_list = []
@@ -64,46 +68,33 @@ for d1 in dirs:
                             else:
                                 header[val] = num                          #once this is complete dictionary is created
                     elif line[0] != '*' and line[0] != ' ' and line[0] != '/n':                #for rest of data line by line
-                        temp_line = line.split()                           
-                        if len(temp_line) == len(header):                  
+                        temp_line = line.split()
+                        if len(temp_line) == len(header):
                             for point, val in enumerate(temp_line):        #Child, Type, Parent use DESCRETE numerical labelling
                                 if point != header['CHILD'] and point != header['TYPE'] and point != header['PARENT']:
                                     temp_line[point] = float(temp_line[point])
                             #temp_line.append(d1)                           #if wanted could append name of archive to each data line
-                        data_list.append(temp_line)                    #or push the temp_list to the archive dictionary at this point...
+                            data_list.append(temp_line)                    #or push the temp_list to the archive dictionary at this point...
 
     for line in data_list:
         if line[header['TYPE']] == '4':                     #splits by node type (Apical or Basal)
             apical_list.append(line)
         elif line[header['TYPE']] == '3':
             basal_list.append(line)
-            
+            #i want to change bottom to covert entire list of child, type and parent to strings at once instead of line by line
+
+
+                 
     archive_dict[d1] = {}                                   #sets archive name (in dirs) as nested dictionary within complete archive dictionary
-    basal_list = zip(*basal_list)
+    basal_list = zip(*basal_list)                           # is zip making the data a tuple organization (yes)
     archive_dict[d1]['Basal'] = basal_list                  #keeps archive --> separate oranization of Apical and Basal
     if apical_list:
         apical_list = zip(*apical_list)                        
-        archive_dict[d1]['Apical'] = apical_list
-'''
-for archive in archive_dict.keys():                         #for every archive in archive dictionary
-    for num, param in enumerate(parameters):         #for eachparameter set as argument
-        plt.figure(num)
-        #for cell_type in archive_dict[archive]:
-            #plt.plot(archive_dict[archive][cell_type][header[param]], archive_dict[archive][cell_type][header['RADIUS']], 'o', label = cell_type)
-        #maybe plot the different archives together as Apical and Basal
-        #integrate 3D plots as well?
-        if 'Apical' in archive_dict[archive].keys():
-            plt.plot(archive_dict[archive]['Apical'][header[param]], archive_dict[archive]['Apical'][header['RADIUS']], 'o', label = 'Apical')
-        plt.plot(archive_dict[archive]['Basal'][header[param]], archive_dict[archive]['Basal'][header['RADIUS']], 'o', label = 'Basal')
-        title = str(archive) + ' ' + str(param) #str(cell_type) 
-        plt.xlabel(str(param))
-        plt.ylabel('Radius')
-        plt.title(title)
-        plt.legend()
-        plt.show()
-        #plt.savefig(title + '.png')
+        archive_dict[d1]['Apical'] = apical_list            #change organization to archive_dict['Apical'][d1]
 
-for num, param in enumerate(parameters):
+params = {key:header[key] for key in header if key not in str_list}  #<-- if user input parameters send here
+'''
+for num, param in enumerate(parameters):                  #make y value for plot specified (input) possibly function to plot against radius and separate residuals
     for archive in archive_dict.keys():
         for cell_type in archive_dict[archive]:            #only potential problem here would be that basal and apical would be on the same plot
             label = archive + ' ' + cell_type
@@ -115,12 +106,14 @@ for num, param in enumerate(parameters):
     plt.legend()
     plt.show()
 '''
-for param in parameters:
+# temporarily commented out to try Pearson's R below...  #rearrange with how I am changing the dictionary organization archive_dict --> compartement type --> archive
+'''
+for param in params.keys():
     #maybe initialize here axis = fig.axes
     for archive in dirs:          #one plot per archive
         #would have to initialize fig,ax = plt.subplot()
         for num,cell_type in enumerate(archive_dict[d1]):
-            #ax[num].plot()
+            #ax[num].plot()        #if i wanted to plot basal and apical on same plot...
             #plt.figure(num)
             figure(num = num, figsize = (14,8))
             label = archive + ' ' + cell_type
@@ -130,17 +123,46 @@ for param in parameters:
             plt.ylabel('RADIUS')
             plt.title(title)
             plt.legend()
-    #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
+            #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
     #plt.clf()                                         #more explicit way to refer to figures
     plt.show()                      #plots as intended, but some remaining issues with saving figures automatically as would appear in window
+
+
+''' #non-working as of now. Will try and correlate across multiple archives of same region for more general trends...
+#corr = np.zeros(shape=(len(params),len(params)), dtype = object)
+#how to use compartment type variable instead of specific 'Apical'
+#loop over compartment type
+corr = pd.DataFrame(index = params, columns = params)                #easier to visualize comparison between parameter correlations
+#for key in archive_dict.keys():                                     #this would print each corr separately for each archive
+for r,rparam in enumerate(params.keys()):                            #how to concatenate each archive for single corr table
+   for c,cparam in enumerate(params.keys()):
+       xlist = []; ylist = []                                        #option to create concatenation dictionary
+       for key in archive_dict.keys():                               #why iss archive_dict[key]['Apical'][header[rparam]] tuple?
+           xlist = list(archive_dict[key]['Basal'][header[rparam]]) + xlist #concatenation <-- i like this..
+           ylist = list(archive_dict[key]['Basal'][header[cparam]]) + ylist #can change to list comprehension if wanted
+       corr.loc[rparam,cparam] = round(pearsonr(xlist, ylist)[0], 4)         #in or out of loop for temp or permanent x and y list
+       #xlist = []; ylist = []                                       #first for initial correlation for params
+       #for d1 in dirs:                                              #take all list code out of loop to make permanent list
+           #xlist =                                                  #plot residuals of Radius and compare to other params
+           #add_val = archive_dict[d1]['Apical'][header[rparam]]
+           #add_x = [val in zip(archive_dict[d1]['Apical'][header[rparam]], ]
+           #add_y = [val for val in archive_dict[d1]['Apical'][header[cparam]]]
+           #xlist.append(add_x[0])
+           #ylist.append(add_y[0])
+       #zip(*archive_dict[dirs]['Apical'][header[rparam]]) #??
+       #corr.loc[rparam,cparam] = round(pearsonr(xlist,ylist)[0], 4) 
+print(corr)
+
+#maybe if correlation (linear) is good for particular combination do something else with that in code
+#i.e. if corr value is above certain acceptance level of good relationship
 '''
 if choice == 'optimize':
     print(choice)
 if choice == 'graph':
     print(choice)
+'''
+'''
 
-'''
-'''
 if len(Radius_a):
         #plot both apical and basal data
         plt.plot(HoSt_a, Radius_a, 'o', label = 'apical dendrite')
