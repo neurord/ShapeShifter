@@ -66,7 +66,7 @@ for d1 in dirs:
                             if val == '*CHILD':
                                 header['CHILD'] = num
                             else:
-                                header[val] = num                          #once this is complete dictionary is created
+                                header[val] = num                          #once this is complete dictionary of param locations is created
                     elif line[0] != '*' and line[0] != ' ' and line[0] != '/n':                #for rest of data line by line
                         temp_line = line.split()
                         if len(temp_line) == len(header):
@@ -81,80 +81,85 @@ for d1 in dirs:
             apical_list.append(line)
         elif line[header['TYPE']] == '3':
             basal_list.append(line)
-            #i want to change bottom to covert entire list of child, type and parent to strings at once instead of line by line
-
 
                  
-    archive_dict[d1] = {}                                   #sets archive name (in dirs) as nested dictionary within complete archive dictionary
-    basal_list = zip(*basal_list)                           # is zip making the data a tuple organization (yes)
-    archive_dict[d1]['Basal'] = basal_list                  #keeps archive --> separate oranization of Apical and Basal
+    if not 'Basal' in archive_dict.keys():
+        archive_dict['Basal'] = {}                                   #sets compartment(cell) type as nested dictionary within complete archive dictionary
+    basal_list = zip(*basal_list)                           #zip will shift column/row organization to follow order of params (as tuple)
+    archive_dict['Basal'][d1] = basal_list                  #each archive (of certain region i.e. Hippocampal archives) will be under Basal or Apical in archive_dict
     if apical_list:
+        if not 'Apical' in archive_dict.keys():
+            archive_dict['Apical'] = {}                         #possible issue is the Apical and Basal dictionaries will be reinitialized as empty if +1 archive...
         apical_list = zip(*apical_list)                        
-        archive_dict[d1]['Apical'] = apical_list            #change organization to archive_dict['Apical'][d1]
+        archive_dict['Apical'][d1] = apical_list            #change organization to archive_dict['Apical'][d1]
 
 params = {key:header[key] for key in header if key not in str_list}  #<-- if user input parameters send here
+
 '''
-for num, param in enumerate(parameters):                  #make y value for plot specified (input) possibly function to plot against radius and separate residuals
-    for archive in archive_dict.keys():
-        for cell_type in archive_dict[archive]:            #only potential problem here would be that basal and apical would be on the same plot
-            label = archive + ' ' + cell_type
-            plt.plot(archive_dict[archive][cell_type][header[param]], archive_dict[archive][cell_type][header['RADIUS']], 'o', label = label)
-    title = str(archive) + ' ' + str(param) #str(cell_type) 
-    plt.xlabel(str(param))
-    plt.ylabel('Radius')
-    plt.title(title)
-    plt.legend()
-    plt.show()
+#plot by comp type with combined archives
+for param in params:                  #make y value for plot specified (input) possibly function to plot against radius and separate residuals
+    for num,comp_type in enumerate(archive_dict):
+        figure(num = num, figsize = (14,8))
+        for archive in archive_dict[comp_type]:           
+            label = archive + ' ' + comp_type
+            plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
+        title = str(comp_type) + ' ' + str(param) 
+        plt.xlabel(str(param))
+        plt.ylabel('Radius')
+        plt.title(title)
+        plt.legend()
+        #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
+        #plt.clf()                                         #more explicit way to refer to figures
+        plt.show()
 '''
+
 # temporarily commented out to try Pearson's R below...  #rearrange with how I am changing the dictionary organization archive_dict --> compartement type --> archive
+#plot by archive with combined comp type
 '''
-for param in params.keys():
+for param in params:           #apical and basal on same graph here
     #maybe initialize here axis = fig.axes
-    for archive in dirs:          #one plot per archive
+    for num,archive in enumerate(dirs):          #one plot per archive
         #would have to initialize fig,ax = plt.subplot()
-        for num,cell_type in enumerate(archive_dict[d1]):
+        figure(num = num, figsize = (14,8))
+        for comp_type in archive_dict:
             #ax[num].plot()        #if i wanted to plot basal and apical on same plot...
             #plt.figure(num)
-            figure(num = num, figsize = (14,8))
-            label = archive + ' ' + cell_type
-            plt.plot(archive_dict[archive][cell_type][header[param]], archive_dict[archive][cell_type][header['RADIUS']], 'o', label = label)
-            title = cell_type + ' ' + str(param) + ' vs. ' + 'RADIUS' #str(root) + ' ' + str(param) #str(cell_type) 
-            plt.xlabel(str(param))
-            plt.ylabel('RADIUS')
-            plt.title(title)
-            plt.legend()
-            #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
-    #plt.clf()                                         #more explicit way to refer to figures
-    plt.show()                      #plots as intended, but some remaining issues with saving figures automatically as would appear in window
+            label = comp_type
+            plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
+        title = str(archive) + ' ' + str(param) + ' vs. ' + 'RADIUS' #str(root) + ' ' + str(param) #str(cell_type) 
+        plt.xlabel(str(param))
+        plt.ylabel('RADIUS')
+        plt.title(title)
+        plt.legend()
+        plt.show()                      #plots as intended, but some remaining issues with saving figures automatically as would appear in window
 
 
-''' #non-working as of now. Will try and correlate across multiple archives of same region for more general trends...
-#corr = np.zeros(shape=(len(params),len(params)), dtype = object)
-#how to use compartment type variable instead of specific 'Apical'
-#loop over compartment type
-corr = pd.DataFrame(index = params, columns = params)                #easier to visualize comparison between parameter correlations
-#for key in archive_dict.keys():                                     #this would print each corr separately for each archive
-for r,rparam in enumerate(params.keys()):                            #how to concatenate each archive for single corr table
-   for c,cparam in enumerate(params.keys()):
-       xlist = []; ylist = []                                        #option to create concatenation dictionary
-       for key in archive_dict.keys():                               #why iss archive_dict[key]['Apical'][header[rparam]] tuple?
-           xlist = list(archive_dict[key]['Basal'][header[rparam]]) + xlist #concatenation <-- i like this..
-           ylist = list(archive_dict[key]['Basal'][header[cparam]]) + ylist #can change to list comprehension if wanted
-       corr.loc[rparam,cparam] = round(pearsonr(xlist, ylist)[0], 4)         #in or out of loop for temp or permanent x and y list
-       #xlist = []; ylist = []                                       #first for initial correlation for params
-       #for d1 in dirs:                                              #take all list code out of loop to make permanent list
-           #xlist =                                                  #plot residuals of Radius and compare to other params
-           #add_val = archive_dict[d1]['Apical'][header[rparam]]
-           #add_x = [val in zip(archive_dict[d1]['Apical'][header[rparam]], ]
-           #add_y = [val for val in archive_dict[d1]['Apical'][header[cparam]]]
-           #xlist.append(add_x[0])
-           #ylist.append(add_y[0])
-       #zip(*archive_dict[dirs]['Apical'][header[rparam]]) #??
-       #corr.loc[rparam,cparam] = round(pearsonr(xlist,ylist)[0], 4) 
-print(corr)
+'''
+#could also make function to store values of residuals as well...just into other dictionaries I would send into function
+
+
+param_data = {} 
+                
+for comp_type in archive_dict.keys():        #saves param data into intergrated list (from archives) param_dict --> comp_type --> param_list --> param
+    param_data[comp_type] = {}          
+    for param in params.keys():
+        if not param in param_data[comp_type]:
+            param_data[comp_type][param] = []
+        for archive in archive_dict[comp_type].keys():     
+            param_data[comp_type][param] = list(archive_dict[comp_type][archive][header[param]]) + list(param_data[comp_type][param])  #option to create concatenation dictionary
+
+corr_dict = {}
+for comp_type in param_data.keys():
+    corr_dict[comp_type] = pd.DataFrame(index = param_data[comp_type].keys(), columns = param_data[comp_type].keys())
+    for rparam in param_data[comp_type].keys():                            #how to concatenate each archive for single corr table
+       for cparam in param_data[comp_type].keys():                         #later this is will refer to already made xlist and ylist (instead of rewriting ever iteration)
+           corr_dict[comp_type].loc[rparam,cparam] = round(pearsonr(param_data[comp_type][rparam], param_data[comp_type][cparam])[0], 4)  #in or out of loop for temp or permanent x and y list
+for comp_type in param_data.keys():                                        #since this is Pearson's R it is showing strength of LINEAR correlation between params
+    print(corr_dict[comp_type])
 
 #maybe if correlation (linear) is good for particular combination do something else with that in code
 #i.e. if corr value is above certain acceptance level of good relationship
+
 '''
 if choice == 'optimize':
     print(choice)
