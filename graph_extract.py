@@ -23,6 +23,7 @@
 
 import numpy as np
 #import scipy
+from scipy import optimize
 from scipy.stats import pearsonr
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -33,6 +34,9 @@ import argparse
 import os
 import glob
 import re
+
+def func(x,m,b):
+    return m*x+b
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--path", type = str)   #may change, but for now is glob-command to look for 
@@ -156,6 +160,51 @@ for comp_type in param_data.keys():
            corr_dict[comp_type].loc[rparam,cparam] = round(pearsonr(param_data[comp_type][rparam], param_data[comp_type][cparam])[0], 4)  #in or out of loop for temp or permanent x and y list
 for comp_type in param_data.keys():                                        #since this is Pearson's R it is showing strength of LINEAR correlation between params
     print(corr_dict[comp_type])
+
+#if I were to limit the data, I would first have to desginate where to split, and then pair x-y data together so that order and length of x and y list is mantained
+#for parent radius, this would only allow the fit to be for the data that is linear and not the extraneous points
+
+xdata = param_data['Apical']['PARENT_RAD']
+#xdata = param_data['Basal']['PARENT_RAD']
+ydata = param_data['Apical']['RADIUS']
+#ydata = param_data['Basal']['RADIUS']
+data_list = []
+
+x_max = 7 #x_max is the maximum accepted value for linear relationship, not = max(xdata)
+for x,y in zip(xdata, ydata):
+    if x < x_max:                   #this is point on parent_rad where there is no longer linear relationship to radius
+        data_list.append((x,y))
+
+popt, pcov = optimize.curve_fit(func,xdata,ydata)
+print('popt',popt)
+print('pcov',pcov)
+plt.figure(figsize = (14,8))
+plt.plot([i[0] for i in data_list],[i[1] for i in data_list], 'o', label = 'Data')   #i would have to order the xdata being sent into func
+print(max(xdata))
+x_line = np.arange(0, x_max, 1)
+#xpredict = [i[0] for i in data_list]  #trying to do residual list, but probably in separate plot than here
+#xpredict.sort()
+plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
+plt.legend()
+plt.show()
+
+x_predict = [i[0] for i in data_list]
+y_predict = []                             #actually residuals are y vals - pred vals
+residuals = []
+for x in x_predict:
+    y_predict.append(func(x, popt[0], popt[1]))
+for y_val, y_pred in zip([i[1] for i in data_list],y_predict):
+    residuals.append(y_val - y_pred)
+print(len(x_predict))
+print(len(y_predict))
+print(len(residuals))
+plt.plot([i[1] for i in data_list], residuals, 'o')
+plt.show()
+
+#so this is working; how would I limit the remaining data so that it would have equal lengths and val order for other parameter comparisons to residuals....
+
+#I wonder if I can make a function to fit optimize for certain parameters with good correlation (linear and nonlinear) values
+#I also wonder if I can limit the data entering optimize.fit (since parent rad is good up to a certain parent_rad value)
 
 #maybe if correlation (linear) is good for particular combination do something else with that in code
 #i.e. if corr value is above certain acceptance level of good relationship
