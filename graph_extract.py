@@ -35,23 +35,33 @@ import os
 import glob
 import re
 
-def func(x,m,b):
+def func(x,m,b): 
     return m*x+b
 
+def plot_func(xlabel, ylabel, title, var = None):
+    if var == 'label':
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.legend()
+        #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
+        #plt.clf()                                         #more explicit way to refer to figures
+        plt.show()
+       
 parser = argparse.ArgumentParser()
-parser.add_argument("--path", type = str)   #may change, but for now is glob-command to look for 
-parser.add_argument("--choice", type = str, choices = {'optimize','graph'})
-#parser.add_argument("--parameters", type = str, nargs = '+', choices = {'PARENT_RAD','NODE_DEGREE','NODE_ORDER','PATH_DIS','PATH_TO_END','NUM_ENDS','BRANCH_LEN','HS'}) 
+parser.add_argument("--path", type = str)   
+parser.add_argument("--graphing", type = str, nargs = '+', choices = {'archives','comp_type','fit'})
 
-args = parser.parse_args()                       #would need to add additional params here manually
+args = parser.parse_args()                      
 path = args.path                                
-choice = args.choice
-#parameters = args.parameters
+graphing = args.graphing
 
-root, dirs, files = list(os.walk(path))[0]  #dirs are subdirectories with archive morphology files
-                                            #make sure all extracted files have same parameters before graphing
-archive_dict = {}; header = {}; params = {} #params will be filled once str_list params are removed from header.keys()
-str_list = ['PARENT','X','Y','Z','CHILD','TYPE']  #identifiers of particular compartments not useful for Radius comparision, would need to update if other identifiers used in .swc 
+'''Extracts data from .CNG_extract.swc files moved to archive directories under main brain region directory (i.e. 'Groen' and 'Jaffe' directories under Hippocampus)''' 
+root, dirs, files = list(os.walk(path))[0]                           #make sure all extracted files have same parameters before graphing                                            
+archive_dict = {}; header = {}; params = {}                          #params will be filled once str_list params are removed from header.keys()
+str_list = ['PARENT','X','Y','Z','CHILD','TYPE']                     #identifiers of particular compartments not useful for Radius comparision
+
+
 for d1 in dirs:
     fullpath = path + d1 + '/*CNG_extract.txt'
     data_list = []; apical_list = []; basal_list = []
@@ -77,15 +87,13 @@ for d1 in dirs:
                             for point, val in enumerate(temp_line):        #Child, Type, Parent use DESCRETE numerical labelling
                                 if point != header['CHILD'] and point != header['TYPE'] and point != header['PARENT']:
                                     temp_line[point] = float(temp_line[point])
-                            #temp_line.append(d1)                           #if wanted could append name of archive to each data line
-                            data_list.append(temp_line)                    #or push the temp_list to the archive dictionary at this point...
+                            data_list.append(temp_line)                   
 
     for line in data_list:
         if line[header['TYPE']] == '4':                     #splits by node type (Apical or Basal)
             apical_list.append(line)
         elif line[header['TYPE']] == '3':
             basal_list.append(line)
-
                  
     if not 'Basal' in archive_dict.keys():
         archive_dict['Basal'] = {}                                   #sets compartment(cell) type as nested dictionary within complete archive dictionary
@@ -93,128 +101,134 @@ for d1 in dirs:
     archive_dict['Basal'][d1] = basal_list                  #each archive (of certain region i.e. Hippocampal archives) will be under Basal or Apical in archive_dict
     if apical_list:
         if not 'Apical' in archive_dict.keys():
-            archive_dict['Apical'] = {}                         #possible issue is the Apical and Basal dictionaries will be reinitialized as empty if +1 archive...
+            archive_dict['Apical'] = {}                         
         apical_list = zip(*apical_list)                        
-        archive_dict['Apical'][d1] = apical_list            #change organization to archive_dict['Apical'][d1]
+        archive_dict['Apical'][d1] = apical_list
+        
+#header is dictionary of all data parameters found in file
+params = {key:header[key] for key in header if key not in str_list}  
 
-params = {key:header[key] for key in header if key not in str_list}  #<-- if user input parameters send here
+#plot mulitple archives with single comp type 
 
-'''
-#plot by comp type with combined archives
-for param in params:                  #make y value for plot specified (input) possibly function to plot against radius and separate residuals
-    for num,comp_type in enumerate(archive_dict):
-        figure(num = num, figsize = (14,8))
-        for archive in archive_dict[comp_type]:           
-            label = archive + ' ' + comp_type
-            plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
-        title = str(comp_type) + ' ' + str(param) 
-        plt.xlabel(str(param))
-        plt.ylabel('Radius')
-        plt.title(title)
-        plt.legend()
-        #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
-        #plt.clf()                                         #more explicit way to refer to figures
-        plt.show()
-'''
+if 'archives' in graphing:
+    for param in params:                  #make y value for plot specified (input) possibly function to plot against radius and separate residuals
+        for num,comp_type in enumerate(archive_dict):
+            figure(num = num, figsize = (14,8))
+            for archive in archive_dict[comp_type]:           
+                label = archive + ' ' + comp_type
+                plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
+            title = str(comp_type) + ' ' + str(param)
+            plot_func(str(param),'Radius',title,'label')
 
-# temporarily commented out to try Pearson's R below...  #rearrange with how I am changing the dictionary organization archive_dict --> compartement type --> archive
-#plot by archive with combined comp type
-'''
-for param in params:           #apical and basal on same graph here
-    #maybe initialize here axis = fig.axes
-    for num,archive in enumerate(dirs):          #one plot per archive
-        #would have to initialize fig,ax = plt.subplot()
-        figure(num = num, figsize = (14,8))
-        for comp_type in archive_dict:
-            #ax[num].plot()        #if i wanted to plot basal and apical on same plot...
-            #plt.figure(num)
-            label = comp_type
-            plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
-        title = str(archive) + ' ' + str(param) + ' vs. ' + 'RADIUS' #str(root) + ' ' + str(param) #str(cell_type) 
-        plt.xlabel(str(param))
-        plt.ylabel('RADIUS')
-        plt.title(title)
-        plt.legend()
-        plt.show()                      #plots as intended, but some remaining issues with saving figures automatically as would appear in window
+#plot mulitple comp type (if present) with single archive
 
+if 'comp_type' in graphing:    
+    for param in params:           
+        #maybe initialize here axis = fig.axes
+        #ax = fig.axis
+        for num,archive in enumerate(dirs):
+            #would have to initialize fig,ax = plt.subplot()
+            figure(num = num, figsize = (14,8))
+            #fig,ax = plt.subplot(nrows = len(archive_dict.keys()))
+            for comp_type in archive_dict.keys()[::-1]:
+                #plt.figure(num)
+                label = comp_type
+                #ax[num].plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)        #if i wanted to plot basal and apical on same plot...
+                plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
+            title = str(archive) + ' ' + str(param) + ' vs. ' + 'RADIUS' #str(root) + ' ' + str(param) #str(cell_type)
+            plot_func(str(param),'Radius',title,'label')
 
-'''
 #could also make function to store values of residuals as well...just into other dictionaries I would send into function
 
 
-param_data = {} 
-                
-for comp_type in archive_dict.keys():        #saves param data into intergrated list (from archives) param_dict --> comp_type --> param_list --> param
-    param_data[comp_type] = {}          
-    for param in params.keys():
-        if not param in param_data[comp_type]:
-            param_data[comp_type][param] = []
-        for archive in archive_dict[comp_type].keys():     
-            param_data[comp_type][param] = list(archive_dict[comp_type][archive][header[param]]) + list(param_data[comp_type][param])  #option to create concatenation dictionary
 
-corr_dict = {}
-for comp_type in param_data.keys():
-    corr_dict[comp_type] = pd.DataFrame(index = param_data[comp_type].keys(), columns = param_data[comp_type].keys())
-    for rparam in param_data[comp_type].keys():                            #how to concatenate each archive for single corr table
-       for cparam in param_data[comp_type].keys():                         #later this is will refer to already made xlist and ylist (instead of rewriting ever iteration)
-           corr_dict[comp_type].loc[rparam,cparam] = round(pearsonr(param_data[comp_type][rparam], param_data[comp_type][cparam])[0], 4)  #in or out of loop for temp or permanent x and y list
-for comp_type in param_data.keys():                                        #since this is Pearson's R it is showing strength of LINEAR correlation between params
-    print(corr_dict[comp_type])
+if 'fit' in graphing:
+   
+    param_data = {}
+    
+    for comp_type in archive_dict.keys():        #saves param data into intergrated list (from archives) param_dict --> comp_type --> param_list --> param
+        param_data[comp_type] = {}          
+        for param in params.keys():
+            if not param in param_data[comp_type]:
+                param_data[comp_type][param] = []
+            for archive in archive_dict[comp_type].keys():     
+                param_data[comp_type][param] = list(archive_dict[comp_type][archive][header[param]]) + list(param_data[comp_type][param])  #option to create concatenation dictionary
 
-#if I were to limit the data, I would first have to desginate where to split, and then pair x-y data together so that order and length of x and y list is mantained
-#for parent radius, this would only allow the fit to be for the data that is linear and not the extraneous points
+    corr_dict = {}
+    for comp_type in param_data.keys():
+        corr_dict[comp_type] = pd.DataFrame(index = param_data[comp_type].keys(), columns = param_data[comp_type].keys())
+        for rparam in param_data[comp_type].keys():                            #how to concatenate each archive for single corr table
+           for cparam in param_data[comp_type].keys():                         #later this is will refer to already made xlist and ylist (instead of rewriting ever iteration)
+               corr_dict[comp_type].loc[rparam,cparam] = round(pearsonr(param_data[comp_type][rparam], param_data[comp_type][cparam])[0], 4)  #in or out of loop for temp or permanent x and y list
+    for comp_type in param_data.keys():                                        #since this is Pearson's R it is showing strength of LINEAR correlation between params
+        print(comp_type)
+        print(corr_dict[comp_type])
 
-xdata = param_data['Apical']['PARENT_RAD']
-#xdata = param_data['Basal']['PARENT_RAD']
-ydata = param_data['Apical']['RADIUS']
-#ydata = param_data['Basal']['RADIUS']
-data_list = []
+    #if I were to limit the data, I would first have to desginate where to split, and then pair x-y data together so that order and length of x and y list is mantained
+    #for parent radius, this would only allow the fit to be for the data that is linear and not the extraneous points
 
-x_max = 7 #x_max is the maximum accepted value for linear relationship, not = max(xdata)
-for x,y in zip(xdata, ydata):
-    if x < x_max:                   #this is point on parent_rad where there is no longer linear relationship to radius
-        data_list.append((x,y))
+    xdata = param_data['Apical']['PARENT_RAD']                    #so, this may be improved if I choose another user argument of 'fit' and allow them to select the parameter of choice
+    #xdata = param_data['Basal']['PARENT_RAD']
+    ydata = param_data['Apical']['RADIUS']
+    #ydata = param_data['Basal']['RADIUS']
+    data_list = []
 
-popt, pcov = optimize.curve_fit(func,xdata,ydata)
-print('popt',popt)
-print('pcov',pcov)
-plt.figure(figsize = (14,8))
-plt.plot([i[0] for i in data_list],[i[1] for i in data_list], 'o', label = 'Data')   #i would have to order the xdata being sent into func
-print(max(xdata))
-x_line = np.arange(0, x_max, 1)
-#xpredict = [i[0] for i in data_list]  #trying to do residual list, but probably in separate plot than here
-#xpredict.sort()
-plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
-plt.legend()
-plt.show()
+    x_max = 7 #x_max is the maximum accepted value for linear relationship, not = max(xdata)
+    for x,y in zip(xdata, ydata):
+        if x < x_max:                   #this is point on parent_rad where there is no longer linear relationship to radius
+            data_list.append((x,y))
 
-x_predict = [i[0] for i in data_list]
-y_predict = []                             #actually residuals are y vals - pred vals
-residuals = []
-for x in x_predict:
-    y_predict.append(func(x, popt[0], popt[1]))
-for y_val, y_pred in zip([i[1] for i in data_list],y_predict):
-    residuals.append(y_val - y_pred)
-print(len(x_predict))
-print(len(y_predict))
-print(len(residuals))
-plt.plot([i[1] for i in data_list], residuals, 'o')
-plt.show()
+    popt, pcov = optimize.curve_fit(func,xdata,ydata)
+    print('popt',popt)
+    print('pcov',pcov)
+    plt.figure(figsize = (14,8))
+    plt.plot([i[0] for i in data_list],[i[1] for i in data_list], 'o', label = 'Data')   #i would have to order the xdata being sent into func
+    print(max(xdata))
+    x_line = np.arange(0, x_max, 1)
+    #xpredict = [i[0] for i in data_list]  #trying to do residual list, but probably in separate plot than here
+    #xpredict.sort()
+    plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
+    plt.legend()
+    plt.show()
 
-#so this is working; how would I limit the remaining data so that it would have equal lengths and val order for other parameter comparisons to residuals....
+    prediction = []
+    for x in xdata:
+        predict_y = func(x, popt[0], popt[1]) if x < x_max else 0
+        prediction.append(predict_y)
+    #print(len(prediction))
+    #print(len(xdata))
+    
+    #x_predict = [i[0] for i in data_list]
+    #y_predict = []                             #actually residuals are y vals - pred vals
+    residuals = []
+    #for x in x_predict:
+        #y_predict.append(func(x, popt[0], popt[1]))
+    #for y_val, y_pred in zip([i[1] for i in data_list],y_predict):
+        #residuals.append(y_val - y_pred)
+    for y_val, y_predict in zip(ydata,prediction):
+        residuals.append(y_val - y_predict)
+    #print(len(xdata))
+    #print(len(ydata))
+    #print(len(prediction))
+    #print(len(residuals))
+    plt.figure(figsize = (14,8))
+    #plt.plot([i[1] for i in data_list], residuals, 'o')
+    plt.plot(xdata,residuals,'o')
+    #plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
+    plt.show()
+    
+    #so this is working; how would I limit the remaining data so that it would have equal lengths and val order for other parameter comparisons to residuals....
 
-#I wonder if I can make a function to fit optimize for certain parameters with good correlation (linear and nonlinear) values
-#I also wonder if I can limit the data entering optimize.fit (since parent rad is good up to a certain parent_rad value)
+    #I wonder if I can make a function to fit optimize for certain parameters with good correlation (linear and nonlinear) values
+    #I also wonder if I can limit the data entering optimize.fit (since parent rad is good up to a certain parent_rad value)
 
-#maybe if correlation (linear) is good for particular combination do something else with that in code
-#i.e. if corr value is above certain acceptance level of good relationship
+    #maybe if correlation (linear) is good for particular combination do something else with that in code
+    #i.e. if corr value is above certain acceptance level of good relationship
 
-'''
-if choice == 'optimize':
-    print(choice)
-if choice == 'graph':
-    print(choice)
-'''
+
+
+
+
 '''
 
 if len(Radius_a):
