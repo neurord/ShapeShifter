@@ -19,7 +19,7 @@
 
 #George Mason University
 #Jonathan Reed
-#Sep 3, 2019
+#Oct 31, 2019
 
 import numpy as np
 #import scipy
@@ -38,9 +38,24 @@ import os
 import glob
 import re
 
+#I wounder if I can send a list of potential functions to a function to create those python functions to test later on
+#i.e.[ [m*x+b],[b + a*(x**z)],[b + a*(x**3)] ]
+#if this is possible it would help with changing the fit variables every time i change the functions sent
 def func(x,m,b): 
     return m*x+b
 
+def func1(x,z,a,b):
+    return b + a*(x**z)
+
+def func2(x,a,b):
+    return b + a*(x**3)
+
+def func3(x,a,b): #odd error where we are dividing by 0 (even when I think I am not sending in 0 values here)
+    return b + a*np.log(x)
+
+def func4(x,a,b):
+    return b + a*np.log10(x)
+#may want to combine plot functions together and call separately with optional variable
 def plot_func(xlabel, ylabel, title, var = None):
     if var == '2d':
         plt.xlabel(xlabel)
@@ -51,8 +66,7 @@ def plot_func(xlabel, ylabel, title, var = None):
         #plt.clf()                                         #more explicit way to refer to figures
         #plt.close()                                       #close window or remove figure from window...
         plt.show()
-        print('File Created : ')
-        print(title + '.png')
+        print('File Created : ' + str(title) + '.png')
 
 def plot_3d(archive_dict, comp_type, header, x, y, z):
     fig = plt.figure(figsize = (14,8))
@@ -68,8 +82,7 @@ def plot_3d(archive_dict, comp_type, header, x, y, z):
     #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
     #plt.savefig(title + '.pickle')
     pickle.dump(fig, open(title + '.pickle', 'wb'))
-    print('File Created : ')
-    print(title + '.pickle')
+    print('File Created : ' + str(title) + '.pickle')
     #plt.show()
     plt.close() 
        
@@ -161,7 +174,7 @@ if graphing:
                     label = archive + ' ' + comp_type
                     plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
                 title = str(comp_type) + ' ' + str(param)
-                plot_func(str(param),'Radius',title,'label')
+                plot_func(str(param),'Radius',title,'2d')
 
     #plot mulitple comp type (if present) with single archive
 
@@ -179,7 +192,7 @@ if graphing:
                     #ax[num].plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)        #if i wanted to plot basal and apical in subplot, same figure...
                     plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
                 title = str(archive) + ' ' + str(param) + ' vs. ' + 'RADIUS' #str(root) + ' ' + str(param) #str(cell_type)
-                plot_func(str(param),'Radius',title,'label')
+                plot_func(str(param),'Radius',title,'2d')
 
     if '3d' in graphing:
         # i need to make a list of the combinations of parameters so I do not have overlap between the combinations
@@ -232,33 +245,37 @@ if graphing:
         #if I were to limit the data, I would first have to desginate where to split, and then pair x-y data together so that order and length of x and y list is mantained
         #for parent radius, this would only allow the fit to be for the data that is linear and not the extraneous points
 
-        xdata = param_data['Apical']['PARENT_RAD']                    #so, this may be improved if I choose another user argument of 'fit' and allow them to select the parameter of choice
+        #xdata = param_data['Apical']['PARENT_RAD']                    #so, this may be improved if I choose another user argument of 'fit' and allow them to select the parameter of choice
+        xdata = param_data['Apical']['BRANCH_LEN']   
         #xdata = param_data['Basal']['PARENT_RAD']
         ydata = param_data['Apical']['RADIUS']
         #ydata = param_data['Basal']['RADIUS']
         data_list = []
 
-        x_max = 7 #x_max is the maximum accepted value for linear relationship, not = max(xdata)
+        #x_max = 7 #x_max is the maximum accepted value for linear relationship, not = max(xdata)
+        x_max = max(xdata)
+        #x_min = min(xdata)
         for x,y in zip(xdata, ydata):
-            if x < x_max:                   #this is point on parent_rad where there is no longer linear relationship to radius
-                data_list.append((x,y))
+            data_list.append((x,y))
+            #if x < x_max:                   #this is point on parent_rad where there is no longer linear relationship to radius
+            #if x > x_min or y > x_min:
+                #data_list.append((x,y))
 
-        popt, pcov = optimize.curve_fit(func,xdata,ydata)
+        #popt, pcov = optimize.curve_fit(func,xdata,ydata)
+        popt, pcov = optimize.curve_fit(func1,xdata,ydata)
         print('popt',popt)
         print('pcov',pcov)
         plt.figure(figsize = (14,8))
         plt.plot([i[0] for i in data_list],[i[1] for i in data_list], 'o', label = 'Data')   #i would have to order the xdata being sent into func
-        print(max(xdata))
+        #print(max(xdata))
         x_line = np.arange(0, x_max, 1)
-        #xpredict = [i[0] for i in data_list]  #trying to do residual list, but probably in separate plot than here
-        #xpredict.sort()
-        plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
+        plt.plot(x_line, func1(x_line, popt[0], popt[1], popt[2]), color = 'orange', label = 'Fitted Function')
         plt.legend()
         plt.show()
 
         prediction = []
         for x in xdata:
-            predict_y = func(x, popt[0], popt[1]) if x < x_max else 0
+            predict_y = func1(x, popt[0], popt[1], popt[2]) #if x > x_min else 0 #if x < x_max else 0
             prediction.append(predict_y)
         #print(len(prediction))
         #print(len(xdata))
