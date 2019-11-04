@@ -38,9 +38,7 @@ import os
 import glob
 import re
 
-#I wounder if I can send a list of potential functions to a function to create those python functions to test later on
-#i.e.[ [m*x+b],[b + a*(x**z)],[b + a*(x**3)] ]
-#if this is possible it would help with changing the fit variables every time i change the functions sent
+#import sympy as sy
 def func(x,m,b): 
     return m*x+b
 
@@ -55,6 +53,20 @@ def func3(x,a,b): #odd error where we are dividing by 0 (even when I think I am 
 
 def func4(x,a,b):
     return b + a*np.log10(x)
+
+'''
+def makefunc(num,form):
+    func = 'func' + num
+    #extract the equation variables as list
+    
+    def func(#send in separated list values, but varied in len...)
+    
+for num,form in enumerate(list):
+makefunc(num,form)
+
+#this would initiate the 
+#want to send in list of possible functions to test at once:
+'''
 #may want to combine plot functions together and call separately with optional variable
 def plot_func(xlabel, ylabel, title, var = None):
     if var == '2d':
@@ -62,10 +74,10 @@ def plot_func(xlabel, ylabel, title, var = None):
         plt.ylabel(ylabel)
         plt.title(title)
         plt.legend()
-        #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
+        plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
         #plt.clf()                                         #more explicit way to refer to figures
-        #plt.close()                                       #close window or remove figure from window...
-        plt.show()
+        plt.close()                                       #close window or remove figure from window...
+        #plt.show()
         print('File Created : ' + str(title) + '.png')
 
 def plot_3d(archive_dict, comp_type, header, x, y, z):
@@ -79,13 +91,55 @@ def plot_3d(archive_dict, comp_type, header, x, y, z):
     plt.title(comp_type)                        #i wonder if I can save multiple views of the 3d plots since we cannot manipulate outside of python --> trying pickle
     plt.legend()                                                                                                     #seems to print everything, not individual files
     title = comp_type + ' : ' + str(x) + ' ' + str(y) + ' ' + str(z)                                          
-    #plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
+    plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
     #plt.savefig(title + '.pickle')
-    pickle.dump(fig, open(title + '.pickle', 'wb'))
+    #pickle.dump(fig, open(title + '.pickle', 'wb'))
     print('File Created : ' + str(title) + '.pickle')
     #plt.show()
     plt.close() 
-       
+
+def plot_fit(xdata, ydata, fit_func, x_line, x_max = None, x_min = None):
+    #do fit work here for each of the plots we are focusing on
+    data_list = []
+    for x,y in zip(xdata, ydata):  #x_min and x_max limits the amount of data sent to better define y-values
+        #if x_max and x_min #<-- if really specific data sent into function...
+        if x_max and x < x_max:
+            data_list.append((x,y))
+        elif x_min and x > x_min:
+            data_list.append((x,y))
+        elif not x_max or x_min:
+            data_list.append((x,y))
+    popt, pcov = optimize.curve_fit(fit_func,xdata,ydata)
+    #print('popt',popt)
+    #print('pcov',pcov)
+    plt.figure(figsize = (14,8))
+    plt.plot([i[0] for i in data_list],[i[1] for i in data_list], 'o', label = 'Data')   
+    plt.plot(x_line, fit_func(x_line, *popt), color = 'orange', label = 'Fitted Function')   #plots fitted function with data it represents
+    plt.legend()                                                                             #x_line is element sent in to be simple x-values for function (0,x_max,1)
+    #plt.title('Fitted Function : ' , fit_func)
+    plt.show() 
+
+    prediction = []          #predicts values for all xdata for residual calculation
+    for x in xdata:
+        if x_max:
+            predict_y = fit_func(x, *popt) if x < x_max else 0    #if x out of range of accepted values prediction = 0
+        elif x_min:                                               #may need to change if particular data with BOTH x_max and x_min
+            predict_y = fit_func(x, *popt) if x > x_min else 0
+        else:
+            predict_y = fit_func(x, *popt)
+        prediction.append(predict_y)
+
+    residuals = []
+    for y_val, y_predict in zip(ydata,prediction):
+        residuals.append(y_val - y_predict)
+    plt.figure(figsize = (14,8))
+    #plt.plot([i[1] for i in data_list], residuals, 'o') #possible outlier, why would single value of parent radius > 40??
+    plt.plot(xdata,residuals,'o')
+    #plt.title('Residuals')
+    #plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
+    plt.show()
+            
+['m*x+b','b + a*(x**3)','b + a*np.log(x)','b + a*np.log10(x)']
 parser = argparse.ArgumentParser()
 parser.add_argument("--path", type = str)   
 parser.add_argument("--graphing", type = str, nargs = '+', choices = {'archives','comp_type','3d','fit'})
@@ -195,11 +249,10 @@ if graphing:
                 plot_func(str(param),'Radius',title,'2d')
 
     if '3d' in graphing:
-        # i need to make a list of the combinations of parameters so I do not have overlap between the combinations
         z = 'RADIUS'
         for comp_type in archive_dict:
-            param_comb = []  
-            for x,y in product(params.keys(),params.keys()):      #trying to iterate over three axes with all axes distinct from each other (no overlap)
+            param_comb = []                                    #list to hold parameter combinations already plotted (no overlap desired)
+            for x,y in product(params.keys(),params.keys()):   #iterates over different combinations if unique and if contains Radius
                 if x != y and x != z and y != z:
                     param_list = [x,y,z]
                     if param_comb:
@@ -207,20 +260,14 @@ if graphing:
                         for comb in param_comb:
                             if Counter(param_list) == Counter(comb):
                                 count = 1
-                        if count != 1:
+                        if count != 1:                        #if combination of parameters not found in list 3d plot
                             param_comb.append(param_list)
                             plot_3d(archive_dict, comp_type, header, x, y, z)
-                        #check the combinations already and then plot
-                        #if combination (NOT order) not found
-                        #send to function
-                        #update param_comb list
-                    if not param_comb:
+                    if not param_comb:                        #initiates plotting with first parameter combination sent to list
                         param_comb.append(param_list)
                         plot_3d(archive_dict, comp_type, header, x, y, z)
-                        # this is first item in param list
-                        # send to function and initialize param_comb list
 
-    if 'fit' in graphing:                #maybe make separate 'fit' user argument from 'graphing', though it does plot function and residuals...
+    if 'fit' in graphing:         #pearson's r correlation for parameters (only linear relationship)
 
         param_data = {}
 
@@ -242,63 +289,27 @@ if graphing:
             print(comp_type)
             print(corr_dict[comp_type])
 
+        #plot_fit(param_data['Apical']['PARENT_RAD'], param_data['Apical']['RADIUS'], func, np.arange(0,7,1), x_max = 7)
+        #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func2, np.arange(0,np.max(param_data['Apical']['BRANCH_LEN']),1))
+        #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func1, np.arange(0,np.max(param_data['Apical']['BRANCH_LEN']),1))
+        testing = list(set(param_data['Apical']['BRANCH_LEN']))
+        testing.sort()
+        print(testing[0:10])
+        print(testing[1]) #this is printing the lowest non-zero value as intended... Still getting 0's in log equation calc causing errors...
+        #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func3, np.arange(testing[1],np.max(param_data['Apical']['BRANCH_LEN']),1), x_max = None, x_min = testing[1])
+        #for some reason still dividing by zero
+
         #if I were to limit the data, I would first have to desginate where to split, and then pair x-y data together so that order and length of x and y list is mantained
         #for parent radius, this would only allow the fit to be for the data that is linear and not the extraneous points
-
+        
+        '''
         #xdata = param_data['Apical']['PARENT_RAD']                    #so, this may be improved if I choose another user argument of 'fit' and allow them to select the parameter of choice
         xdata = param_data['Apical']['BRANCH_LEN']   
         #xdata = param_data['Basal']['PARENT_RAD']
         ydata = param_data['Apical']['RADIUS']
         #ydata = param_data['Basal']['RADIUS']
         data_list = []
-
-        #x_max = 7 #x_max is the maximum accepted value for linear relationship, not = max(xdata)
-        x_max = max(xdata)
-        #x_min = min(xdata)
-        for x,y in zip(xdata, ydata):
-            data_list.append((x,y))
-            #if x < x_max:                   #this is point on parent_rad where there is no longer linear relationship to radius
-            #if x > x_min or y > x_min:
-                #data_list.append((x,y))
-
-        #popt, pcov = optimize.curve_fit(func,xdata,ydata)
-        popt, pcov = optimize.curve_fit(func1,xdata,ydata)
-        print('popt',popt)
-        print('pcov',pcov)
-        plt.figure(figsize = (14,8))
-        plt.plot([i[0] for i in data_list],[i[1] for i in data_list], 'o', label = 'Data')   #i would have to order the xdata being sent into func
-        #print(max(xdata))
-        x_line = np.arange(0, x_max, 1)
-        plt.plot(x_line, func1(x_line, popt[0], popt[1], popt[2]), color = 'orange', label = 'Fitted Function')
-        plt.legend()
-        plt.show()
-
-        prediction = []
-        for x in xdata:
-            predict_y = func1(x, popt[0], popt[1], popt[2]) #if x > x_min else 0 #if x < x_max else 0
-            prediction.append(predict_y)
-        #print(len(prediction))
-        #print(len(xdata))
-
-        #x_predict = [i[0] for i in data_list]
-        #y_predict = []                             #actually residuals are y vals - pred vals
-        residuals = []
-        #for x in x_predict:
-            #y_predict.append(func(x, popt[0], popt[1]))
-        #for y_val, y_pred in zip([i[1] for i in data_list],y_predict):
-            #residuals.append(y_val - y_pred)
-        for y_val, y_predict in zip(ydata,prediction):
-            residuals.append(y_val - y_predict)
-        #print(len(xdata))
-        #print(len(ydata))
-        #print(len(prediction))
-        #print(len(residuals))
-        plt.figure(figsize = (14,8))
-        #plt.plot([i[1] for i in data_list], residuals, 'o')
-        plt.plot(xdata,residuals,'o')
-        #plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
-        plt.show()
-
+        '''
         #so this is working; how would I limit the remaining data so that it would have equal lengths and val order for other parameter comparisons to residuals....
 
         #I wonder if I can make a function to fit optimize for certain parameters with good correlation (linear and nonlinear) values
@@ -306,3 +317,4 @@ if graphing:
 
         #maybe if correlation (linear) is good for particular combination do something else with that in code
         #i.e. if corr value is above certain acceptance level of good relationship
+
