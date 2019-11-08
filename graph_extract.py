@@ -68,17 +68,16 @@ makefunc(num,form)
 #want to send in list of possible functions to test at once:
 '''
 #may want to combine plot functions together and call separately with optional variable
-def plot_func(xlabel, ylabel, title, var = None):
-    if var == '2d':
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.title(title)
-        plt.legend()
-        plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
-        #plt.clf()                                         #more explicit way to refer to figures
-        plt.close()                                       #close window or remove figure from window...
-        #plt.show()
-        print('File Created : ' + str(title) + '.png')
+def plot_label(xlabel, ylabel, title):
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.legend()
+    plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
+    #plt.clf()                                         #more explicit way to refer to figures
+    plt.close()                                       #close window or remove figure from window...
+    #plt.show()
+    print('File Created : ' + str(title) + '.png')
 
 def plot_3d(archive_dict, comp_type, header, x, y, z):
     fig = plt.figure(figsize = (14,8))
@@ -94,51 +93,63 @@ def plot_3d(archive_dict, comp_type, header, x, y, z):
     plt.savefig(title + '.png')                       #works better but still missing the basal graphs if both basal and apical data exist in particular dictionary
     #plt.savefig(title + '.pickle')
     #pickle.dump(fig, open(title + '.pickle', 'wb'))
-    print('File Created : ' + str(title) + '.pickle')
+    print('File Created : ' + str(title) + '.png')
+    #print('File Created : ' + str(title) + '.pickle')
     #plt.show()
     plt.close() 
 
 def plot_fit(xdata, ydata, fit_func, x_line, x_max = None, x_min = None):
     #do fit work here for each of the plots we are focusing on
     data_list = []
-    for x,y in zip(xdata, ydata):  #x_min and x_max limits the amount of data sent to better define y-values
-        #if x_max and x_min #<-- if really specific data sent into function...
-        if x_max and x < x_max:
-            data_list.append((x,y))
-        elif x_min and x > x_min:
-            data_list.append((x,y))
-        elif not x_max or x_min:
-            data_list.append((x,y))
-    popt, pcov = optimize.curve_fit(fit_func,xdata,ydata)
-    #print('popt',popt)
-    #print('pcov',pcov)
+    if x_max != None and x_min != None:
+        data_list = [val for val in zip(xdata,ydata) if val[0] < x_max and val[0] > x_min]
+    elif x_max != None:
+        data_list = [val for val in zip(xdata,ydata) if val[0] < x_max]
+    elif x_min != None:
+        data_list = [val for val in zip(xdata,ydata) if val[0] > x_min]
+    elif x_max == None and x_min == None:
+        data_list = [val for val in zip(xdata,ydata)]
+
+    data_list = zip(*data_list) #reorganizes to list of x and y values within data_list
+
+    popt, pcov = optimize.curve_fit(fit_func,data_list[0],data_list[1])         #may have new issue as no longer optimizing for parameter estimation...
+    print('popt',popt)
+    print('pcov',pcov)
+    
     plt.figure(figsize = (14,8))
-    plt.plot([i[0] for i in data_list],[i[1] for i in data_list], 'o', label = 'Data')   
+    plt.plot(data_list[0],data_list[1], 'o', label = 'Data')   
     plt.plot(x_line, fit_func(x_line, *popt), color = 'orange', label = 'Fitted Function')   #plots fitted function with data it represents
     plt.legend()                                                                             #x_line is element sent in to be simple x-values for function (0,x_max,1)
-    #plt.title('Fitted Function : ' , fit_func)
     plt.show() 
 
     prediction = []          #predicts values for all xdata for residual calculation
-    for x in xdata:
-        if x_max:
+    '''
+    for x in xdata:          #may need specific range within x_min to x_max
+        if x_max != None and x_min != None:
+            predict_y = fit_func(x, *popt) if x < x_max and x > x_min else 0 
+        elif x_max != None:
             predict_y = fit_func(x, *popt) if x < x_max else 0    #if x out of range of accepted values prediction = 0
-        elif x_min:                                               #may need to change if particular data with BOTH x_max and x_min
+        elif x_min != None:                                               #may need to change if particular data with BOTH x_max and x_min
             predict_y = fit_func(x, *popt) if x > x_min else 0
-        else:
+        elif x_max == None and x_min == None:
             predict_y = fit_func(x, *popt)
         prediction.append(predict_y)
-
+    '''
+    for x in data_list[0]:                        #only potential issue is we are not plotting all possible points (since log 0 giving error)
+        predict_y = fit_func(x, *popt)            #plotting shortened data_list[0], not all original xdata sent to function
+        prediction.append(predict_y)
+        
     residuals = []
-    for y_val, y_predict in zip(ydata,prediction):
+    for y_val, y_predict in zip(data_list[1],prediction):
         residuals.append(y_val - y_predict)
     plt.figure(figsize = (14,8))
     #plt.plot([i[1] for i in data_list], residuals, 'o') #possible outlier, why would single value of parent radius > 40??
-    plt.plot(xdata,residuals,'o')
+    plt.plot(data_list[0],residuals,'o')
     #plt.title('Residuals')
     #plt.plot(x_line, func(x_line, popt[0], popt[1]), color = 'orange', label = 'Fitted Function')
     plt.show()
-            
+    
+    
 ['m*x+b','b + a*(x**3)','b + a*np.log(x)','b + a*np.log10(x)']
 parser = argparse.ArgumentParser()
 parser.add_argument("--path", type = str)   
@@ -218,7 +229,7 @@ if graphing:
     #header is dictionary of all data parameters found in file
     params = {key:header[key] for key in header if key not in str_list}  
 
-#plot mulitple archives with single comp type 
+    #plot mulitple archives with single comp type 
 
     if 'archives' in graphing:
         for param in params:                  #make y value for plot specified (input) possibly function to plot against radius and separate residuals
@@ -228,7 +239,7 @@ if graphing:
                     label = archive + ' ' + comp_type
                     plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
                 title = str(comp_type) + ' ' + str(param)
-                plot_func(str(param),'Radius',title,'2d')
+                plot_label(str(param),'Radius',title)
 
     #plot mulitple comp type (if present) with single archive
 
@@ -246,7 +257,7 @@ if graphing:
                     #ax[num].plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)        #if i wanted to plot basal and apical in subplot, same figure...
                     plt.plot(archive_dict[comp_type][archive][header[param]], archive_dict[comp_type][archive][header['RADIUS']], 'o', label = label)
                 title = str(archive) + ' ' + str(param) + ' vs. ' + 'RADIUS' #str(root) + ' ' + str(param) #str(cell_type)
-                plot_func(str(param),'Radius',title,'2d')
+                plot_label(str(param),'Radius',title)
 
     if '3d' in graphing:
         z = 'RADIUS'
@@ -290,31 +301,15 @@ if graphing:
             print(corr_dict[comp_type])
 
         #plot_fit(param_data['Apical']['PARENT_RAD'], param_data['Apical']['RADIUS'], func, np.arange(0,7,1), x_max = 7)
-        #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func2, np.arange(0,np.max(param_data['Apical']['BRANCH_LEN']),1))
         #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func1, np.arange(0,np.max(param_data['Apical']['BRANCH_LEN']),1))
-        testing = list(set(param_data['Apical']['BRANCH_LEN']))
-        testing.sort()
-        print(testing[0:10])
-        print(testing[1]) #this is printing the lowest non-zero value as intended... Still getting 0's in log equation calc causing errors...
-        #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func3, np.arange(testing[1],np.max(param_data['Apical']['BRANCH_LEN']),1), x_max = None, x_min = testing[1])
-        #for some reason still dividing by zero
-
-        #if I were to limit the data, I would first have to desginate where to split, and then pair x-y data together so that order and length of x and y list is mantained
-        #for parent radius, this would only allow the fit to be for the data that is linear and not the extraneous points
-        
-        '''
-        #xdata = param_data['Apical']['PARENT_RAD']                    #so, this may be improved if I choose another user argument of 'fit' and allow them to select the parameter of choice
-        xdata = param_data['Apical']['BRANCH_LEN']   
-        #xdata = param_data['Basal']['PARENT_RAD']
-        ydata = param_data['Apical']['RADIUS']
-        #ydata = param_data['Basal']['RADIUS']
-        data_list = []
-        '''
-        #so this is working; how would I limit the remaining data so that it would have equal lengths and val order for other parameter comparisons to residuals....
+        #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func2, np.arange(0,np.max(param_data['Apical']['BRANCH_LEN']),1))
+        find_min = param_data['Apical']['BRANCH_LEN']  
+        find_min = list(set(find_min))  #for some reason we have to remove duplicates before sorting...
+        find_min.sort()
+        plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func4, np.arange(find_min[1],np.max(param_data['Apical']['BRANCH_LEN']),1), x_max = None, x_min = np.min(param_data['Apical']['BRANCH_LEN']))
 
         #I wonder if I can make a function to fit optimize for certain parameters with good correlation (linear and nonlinear) values
-        #I also wonder if I can limit the data entering optimize.fit (since parent rad is good up to a certain parent_rad value)
 
-        #maybe if correlation (linear) is good for particular combination do something else with that in code
-        #i.e. if corr value is above certain acceptance level of good relationship
 
+#TODO
+#Implement Random Forest with parameters ideal for Radius estimation (want to lower the amount of features needed BUT still have an accurate equation for estimate)
