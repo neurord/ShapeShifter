@@ -12,13 +12,13 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.'''
 
-#Usage:  python data_extract.py --path /path/to/folder
+#Usage:  python2 data_extract.py --path /path/to/folder
 #        where folder contains all .swc files intended for data_extract
 #Output: morphology.CNG_extract.txt
 
 #George Mason University
 #Jonathan Reed
-#Sep 5, 2019
+#Jan 24, 2020
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -46,6 +46,13 @@ def find_parent(swc_tree, node_data, stats, local_list, b_length = 0):
             item.append(path_to_end + comp_len)
             local_list = find_parent(swc_tree, item, stats, local_list)
     return local_list                                                    
+
+def find_child(swc_tree, parent, from_soma_count):
+    for node in swc_tree.get_nodes():
+        if node.parent == parent:
+            key = [k for k in from_soma_count.keys() if k == parent.index]
+            val = from_soma_count[key[0]]
+            from_soma_count[node.index] = val + 1
 
 def flatten(container):
     for i in container:
@@ -126,10 +133,31 @@ else:
             if item[INDEX] not in soma:
                 item[BRANCH_POINT] = [x for x in item[BRANCH_POINT] if x != 0]             #how to convert 'nested' arrray into list for flatten...
                 #print(item[INDEX], item[DEGREE], item[END_POINT], item[BRANCH_POINT], item[BRANCH_LEN], item[PATH_TO_END]) #item[PATH_TO_END])
+                
+        #***currently branch_points of empty list is only for endpoints as they stem from terminal branch --> not sent to file****
         
-        #currently branch_points of empty list is only for endpoints as they stem from terminal branch --> not sent to file****
+        #create tri-nary value with -1 (at soma, no parent) 0 (directly connected to soma) 1 (all else)
+        from_soma_count = {}
+        direct_to_soma = {}
+        for node in swc_tree.get_nodes():
+            if node.index not in soma:
+                if node.parent.index in soma:
+                    from_soma_count[node.index] = 0
+                    direct_to_soma[node.index] = 0
+                else:
+                    direct_to_soma[node.index] = 1
+            else:
+                direct_to_soma[node.index] = -1
+                
+        starts = from_soma_count              #be wary of compartment # as comp len can vary with reconstructions
+        for node in swc_tree.get_nodes():
+            if node.index in starts.keys():
+                find_child(swc_tree, node, from_soma_count)
+                    
+        #print(direct_to_soma)
+        #print(from_soma_count)
         
-        CHILD = 0; TYPE = 1; XYZ = 2; RADIUS = 3; NODE_DEGREE = 4; NODE_ORDER = 5; PARENT = 6; PARENT_RAD = 7; PATH_DIS = 8; END_DIS = 9; NUM_ENDS = 10; HS = 11
+        CHILD = 0; TYPE = 1; XYZ = 2; RADIUS = 3; NODE_DEGREE = 4; NODE_ORDER = 5; PARENT = 6; PARENT_RAD = 7; PATH_DIS = 8; END_DIS = 9; NUM_ENDS = 10; HS = 11; DIRECT_SOMA = 12; NODE_COUNT = 13
         #Node_Degree seems to be the number of 'leafs' downstream
         #Node_Order is amount of  bifurications upstream
         #Path_Dis is distance from node to soma
@@ -152,6 +180,8 @@ else:
                 temp.append(stats.local_horton_strahler(node))                      #one instance where btmorph did not catch single end_point
                 temp.append(self_node[0][BRANCH_LEN])
                 temp.append(self_node[0][PATH_TO_END])
+                temp.append(direct_to_soma[node.index])
+                temp.append(from_soma_count[node.index])
                 morph_list.append(temp)
 
         dirname = os.path.dirname(filename)
@@ -164,7 +194,7 @@ else:
         outfile.write('*Extracted .swc data on : ')
         outfile.write(str(datetime.datetime.now()) + '\n')
         outfile.write('\n')
-        outfile.write('*CHILD; TYPE; X; Y; Z; RADIUS; NODE_DEGREE; NODE_ORDER; PARENT; PARENT_RAD; PATH_DIS; NUM_ENDS; HS; BRANCH_LEN; PATH_TO_END')
+        outfile.write('*CHILD; TYPE; X; Y; Z; RADIUS; NODE_DEGREE; NODE_ORDER; PARENT; PARENT_RAD; PATH_DIS; NUM_ENDS; HS; BRANCH_LEN; PATH_TO_END; DIRECT_SOMA; NODE_COUNT')
         outfile.write('\n')
 
         for line in morph_list:
@@ -175,4 +205,4 @@ else:
         print('File Created  :  ')
         print(filename)
         outfile.close()
- 
+        
