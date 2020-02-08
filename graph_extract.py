@@ -28,12 +28,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 from mpl_toolkits.mplot3d import Axes3D
-#import collections
 from collections import Counter
 from collections.abc import Mapping
-#import math
-#import sklearn
-#from sklearn import linear_model
+#from sklearn.linear_model import LinearRegression
+#import seaborn as sns
 
 import argparse
 import os
@@ -123,18 +121,17 @@ def save_png(png, title):
     png.close()
 
 '''Will Plot 2-D (Simple), 3-D, or Data Across Archives (Merge)'''
-def plot(data,to,extras = None):                                                   
+def plot(data,to,extras,fit_line = None):                                                   
     plt.ion()  
-    if to == 'Simple': #'2-D'                           #so i am thinking that if i send in requests, i would have to find correct key
-        param_x = extras[0]; param_y = extras[1]        #in dictionary to plot...
-        fig = plt.figure(figsize = (14,8))              #instead of just sending in the separated data...and then unwrapping it??
+    if to == 'Simple': #'2-D'                           
+        fig = plt.figure(figsize = (14,8))              
         for archive in data:
-            plt.plot(data[archive][param_x], data[archive][param_y], 'o', label = archive)
-        if len(extras) > 2:
-            line_data = extras[2][0]; line_label = extras[2][1]  #could add correct x-y labels in extras instead 0 1
-            plt.plot(line_data[0], line_data[1], color = 'orange', label = line_label)
-        plt.xlabel(param_x)
-        plt.ylabel(param_y)
+            plt.plot(data[archive][extras[0]], data[archive][extras[1]], 'o', label = archive)
+        #if fit_line:
+            #line_data = extras[2][0]; line_label = extras[2][1]  #could add correct x-y labels in extras instead 0 1
+            #plt.plot(line_data[0], line_data[1], color = 'orange', label = line_label)
+        plt.xlabel(extras[0])
+        plt.ylabel(extras[1])
         plt.legend()
         #save_png(plt, str(param_x) + ' vs ' + str(param_y) + '.png') 
         
@@ -233,6 +230,7 @@ def fit(data,labels,fit_func):
     param_x = labels['param_x']; param_y = labels['param_y']; keys = labels['params']
     counts = {}; select_data = {}; select_data['in'] = []; select_data['out'] = []; outbound = {}
 
+    #I may not need this anymore as the data seems to already be split quite nicely by Soma Direct...
     '''Splits Data if Boundaries from Function Call'''
     for archive in data[comp_type]:                
         count = []; test_count = 0
@@ -326,13 +324,18 @@ def fit(data,labels,fit_func):
         plot(data[comp_type], 'Simple', [select_param, res_label])
 
     return data, outbound, select_data, [line_label,popt,pcov]
-    
+
+
+
 '''Start of Working Code'''
+
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--path", type = str)   
-
 args = parser.parse_args()                      
 path = args.path                                
+
 
 '''Locates and Organizes Archive Data'''
 root, dirs, files = list(os.walk(path))[0]                    #all _extract files require identical parameters
@@ -382,10 +385,9 @@ for d1 in dirs:
         apical_list = list(zip(*apical_list))
         archive_dict['Apical'][d1] = apical_list
 
-'''Plot Parameters to Radius For Initial Comparison'''
-params = {key:header[key] for key in header if key not in str_list}   #new dictionary to only contain useful parameters
-
+        
 '''Separate Data by Connection to Soma (either 0 -> directly connected, 1 -> all others)'''
+params = {key:header[key] for key in header if key not in str_list}   #new dictionary to only contain useful parameters
 param_data = {}                          #contains useful parameter values (as defined by params) as nested dictionary
 
 param_data['Direct'] = {}                #Directly connected to soma
@@ -410,10 +412,28 @@ for comp_type in archive_dict:
                 else:
                     param_data['Indirect'][comp_type][archive][param].append(archive_dict[comp_type][archive][header[param]][num])
 
-#plot(param_data, 'Merge', ['Separate', params.keys()]) #will plot based on archives and connection to soma
-#plot(param_data, 'Merge', ['Combine', params.keys(), param_data['Direct'], dirs]) #will plot based on comp_type and connection to soma
+                    
+'''Plot Parameters to Radius For Initial Comparison'''
+'''Plot Types'''
+   #Merge - Separate to plot Direct/Indirect separately each archive to parameters
+   #Merge - Combine to plot Direct/Indirect together w/o archive specific to parameters
+   #Simple to plot selected key in selected dictionary
+   #3d to plot all parameters to Radius to see 2 parameter influence on Radius
 
+#plot(param_data, 'Merge', ['Separate', params.keys()]) 
+#plot(param_data, 'Merge', ['Combine', params.keys(), archive_dict.keys(), dirs]) 
+
+'''
+for i in params.keys():
+    if 'Apical' in archive_dict.keys():
+        plot(param_data['Direct']['Apical'], 'Simple', [i, 'RADIUS'])
+        plot(param_data['Indirect']['Apical'], 'Simple', [i, 'RADIUS'])
+    if 'Basal' in archive_dict.keys():
+        plot(param_data['Direct']['Basal'], 'Simple', [i, 'RADIUS'])
+        plot(param_data['Indirect']['Basal'], 'Simple', [i, 'RADIUS'])
+'''
 #plot(param_data,'3d', params.keys())
+
 
 '''Parameter Correlation (Pearson's r) to Radius For Linear Relationships'''
 initial_corr = {}
@@ -423,7 +443,7 @@ for i in param_data:
         initial_corr[i] = corr(param_data[i], [i for i in params.keys() if i not in excluded])
     else:
         initial_corr[i] = corr(param_data[i], [i for i in params.keys() if i != 'DIRECT_SOMA'])
-
+'''
 with open('initial_corr_dict.txt', 'a') as outfile:
     for i in initial_corr:
         for j in initial_corr[i]:
@@ -432,13 +452,65 @@ with open('initial_corr_dict.txt', 'a') as outfile:
             outfile.write(str(initial_corr[i][j]) + '\n')
             outfile.write('\n')
     outfile.close()              
-    
+'''
+
+#Combine archive data together for initial forward selection towards Radius
+temp_dict = {}; dataf = {}
+for connect in param_data:
+    if not connect in temp_dict.keys():
+        temp_dict[connect] = {}; dataf[connect] = {}
+    for comp_type in param_data[connect]:   
+        if not comp_type in temp_dict[connect].keys():
+            temp_dict[connect][comp_type] = {}; dataf[connect][comp_type] = {}
+        for param in params.keys():   
+            temp = []
+            for archive in param_data[connect][comp_type]:
+                temp.append(param_data[connect][comp_type][archive][param])
+            temp = list(flatten(temp))
+            temp_dict[connect][comp_type][param] = temp
+        dataf[connect][comp_type] = pd.DataFrame(temp_dict[connect][comp_type]) #will hold dataframe organized values in same hierarchy...
+
+#temp_dict quite useful if we do not need to pay attention to archive orgin...
+#seaborn package may be useful for residuals
+'''
+x = dataf['Direct']['Apical']['PARENT_RAD']
+y = dataf['Direct']['Apical']['RADIUS']
+fig = plt.figure()
+sns.residplot(x,y)
+plt.xlabel('Parent Radius')
+plt.ylabel('Radius')
+'''
+#Residual plot looks same if i were to show parent_rad function...
+'''
+Framed = {}
+for connect in param_data:
+    Framed[connect] = {}
+    for comp_type in param_data[connect]:
+        Framed[connect][comp_type] = forward_selected(pd.DataFrame(temp_dict[connect][comp_type]), 'RADIUS')
+
+for connect in Framed:
+    for comp_type in Framed[connect]:
+        print(Framed[connect][comp_type].model.formula)
+        print(Framed[connect][comp_type].rsquared_adj)
+'''
+
+
+#try stepwise regression --> add features at a time and keep if R is increased
+#plot residuals to remaining parameters
+
+#data is currently stored within Direct vs. Indirect --> Apical vs. Basal --> Archives --> Parameters
+
 #plot(#transformedx, transformedy)
 
 '''Testing Linear Regression Model from sklearn'''
-'''OldNebish cannot access module sklearn --> works on Nebish but cannot seem to install package; maybe requires super-user access'''
-#clf = linear_model.LinearRegression()
-#clf.fit([[getattr(t, 'x%d' % i) for i in range(len(params.keys()))] for archive in param_data[comp_type]], [archive.y for archive in param_data[comp_type]]) #is this the list of data values?
+'''
+mlr = LinearRegression()
+mlr.fit(dataf['Indirect']['Apical'][['PARENT_RAD','NODE_ORDER']],dataf['Indirect']['Apical']['RADIUS'])
+print(mlr.intercept_)
+print(mlr.coef_)
+'''
+#check to see if mlr(LinearRegression()) has some significance value for model fit
+
 '''Initiate Fit and Residuals'''
 
 #Apical_PR, Apical_PRout, Apical_PRval, Apical_PRline = fit(param_data, {'comp_type':'Apical', 'param_x':'PARENT_RAD', 'param_y':'RADIUS','params':params.keys()},{'func':func0, 'x_range':np.arange(0,7,1), 'x_min':None, 'x_max':7, 'line':'y= mx + b'})
