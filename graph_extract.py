@@ -19,7 +19,7 @@
 '''Only works in Python 3 because certain packages statsmodels and collections'''
 #George Mason University
 #Jonathan Reed
-#Feb. 7, 2020
+#Feb. 9, 2020
 
 import numpy as np
 from scipy import optimize
@@ -77,6 +77,7 @@ def forward_selected(data, response):
     model = smf.ols(formula, data).fit()
     return model
 
+
 '''Function Definitions for Fit Equations'''
 def func0(x,m,b):                                     
     return m*x+b
@@ -100,11 +101,17 @@ def func5(a,x,c):
     return a*(1-np.exp(x/c))
     #return (a-b**(c/x))
 
-def piecewise_linear(x, x0, k1, k2, b):#(x, x0, y0, k1, k2):
-    return np.piecewise(x, [x < x0], [lambda x:k1*x + b, lambda x:k2*x + b])
-#want to send in list of possible functions to test at once:
+#def piecewise_linear(x, x0, k1, k2, b):#(x, x0, y0, k1, k2):
+    #return np.piecewise(x, [x < x0], [lambda x:k1*x + b, lambda x:k2*x + b])
+
+def combo_func(X):#, a, b, c):
+    x1,x2 = X          #where x1 and x2 are unpacked in func
+    #return np.log(a) + b*np.log(x) + c*np.log(y)
+    return m1*x1 + m2*x2 + b
+
 
 '''Coding Functions'''
+
 
 '''Will Flatten Nested List to Single (Non-Nested) List'''
 def flatten(container):    
@@ -115,21 +122,28 @@ def flatten(container):
         else:
             yield i
 
+            
 def save_png(png, title):
     png.savefig(title)
     print('File Created : ' + str(title))
     png.close()
 
+    
 '''Will Plot 2-D (Simple), 3-D, or Data Across Archives (Merge)'''
 def plot(data,to,extras,fit_line = None):                                                   
     plt.ion()  
     if to == 'Simple': #'2-D'                           
-        fig = plt.figure(figsize = (14,8))              
-        for archive in data:
-            plt.plot(data[archive][extras[0]], data[archive][extras[1]], 'o', label = archive)
-        #if fit_line:
-            #line_data = extras[2][0]; line_label = extras[2][1]  #could add correct x-y labels in extras instead 0 1
-            #plt.plot(line_data[0], line_data[1], color = 'orange', label = line_label)
+        fig = plt.figure(figsize = (14,8))
+        if not fit_line:
+            for archive in data:
+                plt.plot(data[archive][extras[0]], data[archive][extras[1]], 'o', label = archive)
+        elif 'Res' in fit_line:       #Gives FUTURE_WARNING for each elif statement...
+            plt.plot(data[extras[0]], data[extras[1]], 'o', label = 'Residuals')
+        elif 'Fit' in fit_line:
+            plt.plot(data[extras[0]], data[extras[1]], 'o', label = 'Data')
+            plt.plot(fit_line[0], fit_line[1], color = 'orange', label = fit_line[2])
+        elif 'Post'in fit_line:
+            plt.plot(data[extras[0]], data[extras[1]], 'o', label = 'Data')
         plt.xlabel(extras[0])
         plt.ylabel(extras[1])
         plt.legend()
@@ -202,133 +216,60 @@ def plot(data,to,extras,fit_line = None):
                     plt.legend()
                 save_png(plt, connect + ' ' + comb[0] + ' ' + comb[1] + ' ' + 'RADIUS' + '.png')
 
+                
 '''Pearson's r Correlation for Feature Relationships'''
-def corr(data,keys): 
-    corr_dict = {}
-    for comp_type in data.keys():
-        corr_dict[comp_type] = pd.DataFrame(index = keys, columns = keys)
-        for rparam in keys:
-            for cparam in keys:
-                combx = []; comby = []
-                for archive in data[comp_type].keys():                   
-                    combx.append(list(data[comp_type][archive][rparam])) 
-                    comby.append(list(data[comp_type][archive][cparam])) 
-                combx = list(flatten(combx))
-                comby = list(flatten(comby))
-                corr_dict[comp_type].loc[rparam,cparam] = round(pearsonr(combx,comby)[0],4)
-    return corr_dict
+def corr(data,keys):
+    corr_df = pd.DataFrame(index = keys, columns = keys)
+    for rparam in keys:
+        for cparam in keys:
+            corr_df.loc[rparam,cparam] = round(pearsonr(data[rparam],data[cparam])[0],4)
+    return corr_df
+
 
 '''Descrete Functions (top) to Selected Data; Outputs Variables and Indicates Possible Fit Fine-Tuning'''
-def fit(data,labels,fit_func):
-    #may want to fit multiple x values for possible multivariante equation...
-    
-    func = fit_func['func']; x_max = fit_func['x_max']; x_min = fit_func['x_min']; x_range = fit_func['x_range']; line_label = fit_func['line']
-    comp_type = labels['comp_type'];
-    #if len(labels['param_x']) > 1:
-        #for num, param in eumerate(labels['param_x']):
-            #how to organize the multiple x's recieved here....
-    param_x = labels['param_x']; param_y = labels['param_y']; keys = labels['params']
-    counts = {}; select_data = {}; select_data['in'] = []; select_data['out'] = []; outbound = {}
-
-    #I may not need this anymore as the data seems to already be split quite nicely by Soma Direct...
-    '''Splits Data if Boundaries from Function Call'''
-    for archive in data[comp_type]:                
-        count = []; test_count = 0
-        for num,val in enumerate(data[comp_type][archive][param_x]):
-            x = data[comp_type][archive][param_x][num]
-            y = data[comp_type][archive][param_y][num]
-            point = [x,y]
-            if x_max != None and x_min != None:              
-                if val > x_max and val < x_min:                
-                    count.append(num)                          
-                    select_data['out'].append(point)
-                else:
-                    select_data['in'].append(point)
-            elif x_max != None and x_min == None:
-                if val > x_max:
-                    count.append(num)
-                    select_data['out'].append(point)
-                else:
-                    select_data['in'].append(point)
-            elif x_min != None and x_max == None:
-                if val < x_min:
-                    count.append(num)
-                    select_data['out'].append(point)
-                else:
-                    select_data['in'].append(point)
-                    
-            elif x_max == None and x_min == None:
-                test_count = test_count + 1
-                select_data['in'].append(point)
-                  
-        counts[archive] = count
-
-    for data_set in select_data.keys():                    #reorganizes data into xlist and ylist of values
-        select_data[data_set] = list(zip(*select_data[data_set])) #can probably relabel for param_x and param_y sent into function
-        select_data[data_set] = [list(i) for i in select_data[data_set] if i]
-
-    if counts[archive]:                                          
-        #plot({'values':[select_data['out'][0],select_data['out'][1]]}, 'Simple', {'labels':labels})
-        plot(select_data, 'Simple', [0, 1]) #can leave this here: plots data that is outside of bounds
-        temp_dict = {}
-        temp_dict[comp_type] = {}; outbound[comp_type] = {}         #if values found outside of bounds
-        for archive in data[comp_type]:                             #save to new dictionary with same structure
-            temp_dict[comp_type][archive] = {}
-            outbound[comp_type][archive] = {}
-            for num,param in enumerate(list(zip(keys))):
-                outbound[comp_type][archive][param[0]] = []
-                temp_dict[comp_type][archive][param[0]] = []
-                for num,val in enumerate(data[comp_type][archive][param[0]]):
-                    if num in counts[archive]:
-                        outbound[comp_type][archive][param[0]].append(val)
-                    else:
-                        temp_dict[comp_type][archive][param[0]].append(val) #update sent data to include only 'in' bounds
-        data = temp_dict
-        
-    else:
-        del select_data['out']
-        
+def fit(data,labels,func):
     '''Calculate Variables for Curve Fitting'''
-    popt, pcov = optimize.curve_fit(func,select_data['in'][0],select_data['in'][1])  #find values of function variables
+    '''Calculate Residuals within Dictionary Organization'''
+    if len(labels[0]) > 1: 
+        temp = []
+        for i in labels[0]: #this will be the x params selected for function
+            temp.append(data[i])  #might only print out each letter, not the extent of labels[0]
+        x = tuple(temp)           #<--- this will be useful if sending in multiple X to function
+    else:
+        x = data[labels[0][0]]
+    y = data[labels[1][0]]
+    popt, pcov = optimize.curve_fit(func[0],x,y)
+    print('This is fit estimate for : ', func[1])
     print('popt',popt)
     print('pcov',pcov)
+    xlist = [str(i) for i in labels[0]]
+    print('Where x = ', xlist[0], ' and y = ', labels[1][0]) 
     
-    #plot({'values':[select_data['in'][0],select_data['in'][1]],'line':[x_range,func(x_range, *popt)]}, 'Simple', {'labels':labels, 'line_label':line_label})
-    plot(select_data,'Simple', [0,1,[[x_range,func(x_range, *popt)],line_label]])
-    
-    
-    '''Calculate Residuals within Dictionary Organization'''
-    res_label = 'Residual_' + str(param_x)
-    for archive in data[comp_type]:
-        prediction = []
-        data[comp_type][archive][res_label] = []
-        for x in data[comp_type][archive][param_x]:
-            predict_y = func(x,*popt)
+    for i in labels[0]: #will keep for now as it will print individual select X to Radius
+        temp_max = round(max(data[i]))  #Plots Fitted Equation to Data
+        temp_min = round(min(data[i]))
+        x_range = np.arange(temp_min, temp_max + 1, 1)
+        plot(data, 'Simple', [i, labels[1][0]], [x_range, func[0](x_range, *popt), func[1], 'Fit'])
+        
+        res_label = str(i) + '_Res'  #Finds Residuals and saves as new parameter within data
+        prediction = []; residuals = []
+        data[res_label] = []
+        for x in data[i]:
+            predict_y = func[0](x,*popt)
             prediction.append(predict_y)
-        residuals = []
-        for y_val, y_predict in list(zip(data[comp_type][archive][param_y],prediction)):
+        for y_val, y_predict in list(zip(data[labels[1][0]],prediction)):
             residuals.append(y_val - y_predict)
-        data[comp_type][archive][res_label] = residuals
-    '''
-    xlist = []; ylist = []
-    labels['param_x'] = 'Radius'
-    labels['param_y'] = 'Residuals'
-    for archive in data[comp_type]:
-        for val in zip(data[comp_type][archive][param_y], data[comp_type][archive][res_label]):
-            xlist.append(val[0])
-            ylist.append(val[1])
-    '''
-    plot(data[comp_type], 'Simple', ['RADIUS', res_label])
+        data[res_label] = residuals
+        print('Residual Plot : ', i, ' to ', labels[1][0])
+        plot(data, 'Simple', [labels[1][0], res_label], ['Res'])
 
-    for select_param in data[comp_type][archive].keys():
-        plot(data[comp_type], 'Simple', [select_param, res_label])
+    #for select_param in data[comp_type][archive].keys():
+        #plot(data[comp_type], 'Simple', [select_param, res_label])
 
-    return data, outbound, select_data, [line_label,popt,pcov]
-
-
+    return data, [func1,popt,pcov]
+    
 
 '''Start of Working Code'''
-
 
 
 parser = argparse.ArgumentParser()
@@ -412,7 +353,43 @@ for comp_type in archive_dict:
                 else:
                     param_data['Indirect'][comp_type][archive][param].append(archive_dict[comp_type][archive][header[param]][num])
 
-                    
+#Combine archive data together for initial forward selection towards Radius
+comb_dict = {}; dataf = {}
+for connect in param_data:
+    if not connect in comb_dict.keys():
+        comb_dict[connect] = {}; dataf[connect] = {}
+    for comp_type in param_data[connect]:   
+        if not comp_type in comb_dict[connect].keys():
+            comb_dict[connect][comp_type] = {}; dataf[connect][comp_type] = {}
+        for param in params.keys():   
+            temp = []
+            for archive in param_data[connect][comp_type]:
+                temp.append(param_data[connect][comp_type][archive][param])
+            temp = list(flatten(temp))
+            comb_dict[connect][comp_type][param] = temp
+        dataf[connect][comp_type] = pd.DataFrame(comb_dict[connect][comp_type]) #will hold dataframe organized values in same hierarchy...
+
+        
+'''Parameter Correlation (Pearson's r) to Radius For Linear Relationships'''
+initial_corr = {}
+excluded = ['DIRECT_SOMA','NODE_ORDER','NODE_COUNT']
+for connect in comb_dict:
+    initial_corr[connect] = {}
+    for comp_type in comb_dict[connect]:
+        if connect == 'Direct':
+            initial_corr[connect][comp_type] = corr(comb_dict[connect][comp_type], [i for i in params.keys() if i not in excluded])
+        else:
+            initial_corr[connect][comp_type] = corr(comb_dict[connect][comp_type], [i for i in params.keys() if i != 'DIRECT_SOMA'])
+
+with open('initial_corr_dict.txt', 'a') as outfile:
+    for connect in initial_corr:
+        for comp_type in initial_corr[connect]:
+            outfile.write(str(connect) + ' - ' + str(comp_type) + '\n')
+            outfile.write('\n')
+            outfile.write(str(initial_corr[connect][comp_type]) + '\n')
+            outfile.write('\n')
+    outfile.close()              
+
 '''Plot Parameters to Radius For Initial Comparison'''
 '''Plot Types'''
    #Merge - Separate to plot Direct/Indirect separately each archive to parameters
@@ -434,43 +411,7 @@ for i in params.keys():
 '''
 #plot(param_data,'3d', params.keys())
 
-
-'''Parameter Correlation (Pearson's r) to Radius For Linear Relationships'''
-initial_corr = {}
-excluded = ['DIRECT_SOMA','NODE_ORDER','NODE_COUNT']
-for i in param_data:
-    if i == 'Direct':
-        initial_corr[i] = corr(param_data[i], [i for i in params.keys() if i not in excluded])
-    else:
-        initial_corr[i] = corr(param_data[i], [i for i in params.keys() if i != 'DIRECT_SOMA'])
-'''
-with open('initial_corr_dict.txt', 'a') as outfile:
-    for i in initial_corr:
-        for j in initial_corr[i]:
-            outfile.write(str(i) + ' - ' + str(j) + '\n')
-            outfile.write('\n')
-            outfile.write(str(initial_corr[i][j]) + '\n')
-            outfile.write('\n')
-    outfile.close()              
-'''
-
-#Combine archive data together for initial forward selection towards Radius
-temp_dict = {}; dataf = {}
-for connect in param_data:
-    if not connect in temp_dict.keys():
-        temp_dict[connect] = {}; dataf[connect] = {}
-    for comp_type in param_data[connect]:   
-        if not comp_type in temp_dict[connect].keys():
-            temp_dict[connect][comp_type] = {}; dataf[connect][comp_type] = {}
-        for param in params.keys():   
-            temp = []
-            for archive in param_data[connect][comp_type]:
-                temp.append(param_data[connect][comp_type][archive][param])
-            temp = list(flatten(temp))
-            temp_dict[connect][comp_type][param] = temp
-        dataf[connect][comp_type] = pd.DataFrame(temp_dict[connect][comp_type]) #will hold dataframe organized values in same hierarchy...
-
-#temp_dict quite useful if we do not need to pay attention to archive orgin...
+#comb_dict quite useful if we do not need to pay attention to archive orgin...
 #seaborn package may be useful for residuals
 '''
 x = dataf['Direct']['Apical']['PARENT_RAD']
@@ -481,12 +422,13 @@ plt.xlabel('Parent Radius')
 plt.ylabel('Radius')
 '''
 #Residual plot looks same if i were to show parent_rad function...
+
 '''
 Framed = {}
 for connect in param_data:
     Framed[connect] = {}
     for comp_type in param_data[connect]:
-        Framed[connect][comp_type] = forward_selected(pd.DataFrame(temp_dict[connect][comp_type]), 'RADIUS')
+        Framed[connect][comp_type] = forward_selected(pd.DataFrame(comb_dict[connect][comp_type]), 'RADIUS')
 
 for connect in Framed:
     for comp_type in Framed[connect]:
@@ -497,8 +439,6 @@ for connect in Framed:
 
 #try stepwise regression --> add features at a time and keep if R is increased
 #plot residuals to remaining parameters
-
-#data is currently stored within Direct vs. Indirect --> Apical vs. Basal --> Archives --> Parameters
 
 #plot(#transformedx, transformedy)
 
@@ -512,40 +452,17 @@ print(mlr.coef_)
 #check to see if mlr(LinearRegression()) has some significance value for model fit
 
 '''Initiate Fit and Residuals'''
+DA_PR, DA_PR_fit = fit(comb_dict['Direct']['Apical'], [['PARENT_RAD'],['RADIUS']], [func0,'y = mx + b'])
+IA_PR, IA_PR_fit = fit(comb_dict['Indirect']['Apical'], [['PARENT_RAD'],['RADIUS']], [func0,'y = mx + b'])
 
-#Apical_PR, Apical_PRout, Apical_PRval, Apical_PRline = fit(param_data, {'comp_type':'Apical', 'param_x':'PARENT_RAD', 'param_y':'RADIUS','params':params.keys()},{'func':func0, 'x_range':np.arange(0,7,1), 'x_min':None, 'x_max':7, 'line':'y= mx + b'})
+IA_PR_Res_corr = corr(IA_PR, [i for i in IA_PR.keys() if i != 'DIRECT_SOMA'])
 
-#Apical_PR, Apical_PRout, Apical_PRval, Apical_PRline = fit(param_data, {'comp_type':'Apical', 'param_x':'PARENT_RAD', 'param_y':'RADIUS','params':params.keys()},{'func':func_merge, 'x_range':np.arange(0,7,1), 'x_min':None, 'x_max':7, 'line':'y = mx if(x1<x_max) + ax**z if(x2>x_max) + b'})
 '''
-xmax = 0
-for archive in dirs:
-    temp = max(param_data['Apical'][archive]['BRANCH_LEN'],key = lambda item:item)
-    #temp = np.max(param_data['Apical'][archive]['BRANCH_LEN'])
-    if temp > xmax:
-        xmax = temp
+for param in IA_PR:
+    plot(IA_PR, 'Simple', [param, 'PARENT_RAD_Res'], ['Post'])
 '''
+#could try and transform data now...
 
-'''Testing Pandas Dataframe for Stepwise Regression'''
-'''
-for param in params.keys():
-    temp = []
-    for archive in param_data['Apical']:
-        temp.append(param_data['Apical'][archive][param])
-    temp = list(flatten(temp))
-    temp_dict[param] = temp
-'''
-'''
-temp_dict = {}
-for param in params.keys():   #converts to DataFrame
-    temp = []
-    for comp_type in param_data.keys():   #lose archive organization or could save number at which append happens...
-        if not comp_type in temp_dict.keys():
-            temp_dict[comp_type] = {}
-        for archive in param_data[comp_type]:
-            temp.append(param_data[comp_type][archive][param])
-        temp = list(flatten(temp))
-        temp_dict[comp_type][param] = temp
-'''
 '''
 Framed = {}
 #memory error...
@@ -553,82 +470,21 @@ for comp_type in temp_dict.keys():
     Framed[comp_type] = forward_selected(pd.DataFrame(temp_dict[comp_type]), 'RADIUS')
 #try single archives at a time
 '''
+
 #try stepwise regression --> add features at a time and keep if R is increased
 #plot residuals to remaining parameters
 
 #temp_frame = pd.DataFrame(temp_dict)
-
 #model = forward_selected(temp_frame, 'RADIUS')
 #print(model.model.formula)
 #print(model.rsquared_adj)
 
-'''It looks like all parameters would be considered significant to estimate diameter...'''
-
-#Try and plot only the (0) and (1) for Direct Soma to see if there is a significant difference between their supposed equations
 '''Data Transformations'''
-#transform = ['param_log', 'param_exp', 'param_sqrt']
-
-#Apical_PR, Apical_PRout, Apical_PRval, Apical_PRline = fit(param_data, {'comp_type':'Apical', 'param_x':'PARENT_RAD', 'param_y':'RADIUS','params':params.keys()},{'func':func0, 'x_range':np.arange(0,7,1), 'x_min':None, 'x_max':7, 'line':'y = mx + b'})
-
-#possibly loop over the parameters to the new residual and possible pick best function --> careful for bounds
-#Apical_PR_P, Apical_PRout_P, Apical_PRval_P, Apical_PRline_P = fit(Apical_PR, {'comp_type':'Apical', 'param_x':'PATH_TO_END', 'param_y':'Residual_PARENT_RAD','params':Apical_PR['Apical']['Groen'].keys()},{'func':func0, 'x_range':np.arange(0,250,1), 'x_min':None, 'x_max':250, 'line':'y = mx + b'})
-'''
-#could probably make function to determine max/min number within data list
-xmax = 0
-for archive in dirs:
-    temp = max(param_data['Apical'][archive]['BRANCH_LEN'],key = lambda item:item)
-    #temp = np.max(param_data['Apical'][archive]['BRANCH_LEN'])
-    if temp > xmax:
-        xmax = temp
-'''
-#Apical_BL, Apical_BLout, Apical_BLval, Apical_BLline = fit(param_data, {'comp_type':'Apical', 'param_x':'BRANCH_LEN', 'param_y':'RADIUS','params':params.keys()},{'func':func1, 'x_range':np.arange(0,xmax,1), 'x_min':0, 'x_max':None, 'line':'b + a*(x**z)'})
-
-#Apical_BL, Apical_BLout, Apical_BLval, Apical_BLline = fit(param_data, {'comp_type':'Apical', 'param_x':'BRANCH_LEN', 'param_y':'RADIUS','params':params.keys()},{'func':func2, 'x_range':np.arange(0,xmax,1), 'x_min':0, 'x_max':None, 'line':'b + a*(x**3)'})
-
-#Apical_BL, Apical_BLout, Apical_BLval, Apical_BLline = fit(param_data, {'comp_type':'Apical', 'param_x':'BRANCH_LEN', 'param_y':'RADIUS','params':params.keys()},{'func':func3, 'x_range':np.arange(0,xmax,1), 'x_min':0, 'x_max':None, 'line':'b + a*np.log(x)'})
-
-#Apical_BL, Apical_BLout, Apical_BLval, Apical_BLline = fit(param_data, {'comp_type':'Apical', 'param_x':'BRANCH_LEN', 'param_y':'RADIUS','params':params.keys()},{'func':func4, 'x_range':np.arange(0,xmax,1), 'x_min':0, 'x_max':None, 'line':'b + a*np.log10(x)'})
-
-#Apical_BL, Apical_BLout, Apical_BLval, Apical_BLline = fit(param_data, {'comp_type':'Apical', 'param_x':'BRANCH_LEN', 'param_y':'RADIUS','params':params.keys()},{'func':func5, 'x_range':np.arange(0,xmax,1), 'x_min':0, 'x_max':None, 'line':'a*(1-exp(x/c))'})
-
-#Apical_PR, Apical_PRout, Apical_PRval, Apical_PRline = fit(param_data, {'comp_type':'Apical', 'param_x':'PARENT_RAD', 'param_y':'RADIUS','params':params.keys()},{'func':func_merge, 'x_range':np.arange(0,7,1), 'x_min':None, 'x_max':7, 'line':'y = (b+m*x)*(x<x_max)+(c+a*(x**z))*(x>x_max)'})
-
-#for parent_rad maybe use btmorph to see if points are directly connected to soma
-#would have to keep filenames and unique compartment order maintained if so...
-
-
-'''
->>> temp_dict = {}
->>> temp_dict['labels'] = {}
->>> temp_dict['labels']['comp_type'] = 'Apical'
->>> temp_dict['labels']['param_x'] = 'PATH_TO_END'
->>> temp_dict['labels']['param_y'] = 'RADIUS'
->>> temp_dict = {'labels': {'comp_type': 'Apical', 'param_y': 'RADIUS', 'param_x': 'PATH_TO_END'}}
-{'labels': {'comp_type': 'Apical', 'param_y': 'RADIUS', 'param_x': 'PATH_TO_END'}}
->>> plot({'values':[Apical_PRout['Apical']['Groen']['PATH_TO_END'], Apical_PRout['Apical']['Groen']['RADIUS']]}, 'Simple', temp_dict)
-'''
 
 #THINGS TO TRY
 #Separating the Direct Soma points (0) and (1) to see if they have separate equations to estimate radius
 #transform the data to see any nonlinear relationships (if linear after the transformation)
 #Check to see why direct_soma nodes have differing values of Soma Radius...(or their parent radius)
-
-#maybe check remaining data points within function
-#huh how to combine residuals to remaining parameters. may have to maintain archives when pushing to function.
-#plot_fit(param_data['Apical']['PARENT_RAD'], param_data['Apical']['RADIUS'], func0, np.arange(0,7,1), x_max = 7) #y-x labels send in key for x,y
-    #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func1, np.arange(0,np.max(param_data['Apical']['BRANCH_LEN']),1))
-    #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func2, np.arange(0,np.max(param_data['Apical']['BRANCH_LEN']),1))
-    #find_min = param_data['Apical']['BRANCH_LEN']  
-    #find_min = list(set(find_min))  #for some reason we have to remove duplicates before sorting...
-    #find_min.sort()
-    #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func4, np.arange(find_min[1],np.max(param_data['Apical']['BRANCH_LEN']),1), x_max = None, x_min = np.min(param_data['Apical']['BRANCH_LEN']))
-    #plot_fit(param_data['Apical']['BRANCH_LEN'], param_data['Apical']['RADIUS'], func4, np.arange(find_min[1],np.max(param_data['Apical']['BRANCH_LEN']),1), x_max = None, x_min = np.min(param_data['Apical']['BRANCH_LEN']))
-    #I wonder if I can make a function to fit optimize for certain parameters with good correlation (linear and nonlinear) values
-
-
-#Additional Types of Plotting Data
-#plot mulitple comp type (if present) with single archive
-
 
 #TODO
 #Implement Random Forest with parameters ideal for Radius estimation (want to lower the amount of features needed BUT still have an accurate equation for estimate)
