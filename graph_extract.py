@@ -19,7 +19,7 @@
 '''Must use Python 3 for seemless usage in statsmodels package'''
 #George Mason University
 #Jonathan Reed
-#Feb. 20, 2020
+#Mar. 1, 2020
 
 import numpy as np
 from scipy import optimize
@@ -29,7 +29,6 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 from mpl_toolkits.mplot3d import Axes3D
 import statsmodels.api as sm
-import statsmodels.formula.api as smf
 
 import argparse
 import os
@@ -44,30 +43,6 @@ def inverse_func(X,m1,m2,b):  #x2 currently sent in as 1/(value within Path to E
 
 def func0(x,m,b):                                     
     return m*x+b
-
-def func1(x,z,a,b):
-    return b + a*(x**z)
-
-def func_merge(x,m,b,z,a,c,x_max):
-    return (b+m*x)*(x<x_max)+(c+a*(x**z))*(x>x_max)#+b (x2> max_val)
-
-def func2(x,a,b):
-    return b + a*(x**3)
-
-def func3(x,a,b): 
-    return b + a*np.log(x)
-
-def func4(x,a,b):
-    return b + a*np.log10(x)
-
-def func5(a,x,c):
-    return a*(1-np.exp(x/c))
-    #return (a-b**(c/x))
-
-def combo_func(X):#, a, b, c):
-    x1,x2 = X          #where x1 and x2 are unpacked in func
-    #return np.log(a) + b*np.log(x) + c*np.log(y)
-    return m1*x1 + m2*x2 + b
 
 
 '''Flatten Nested List to Single Non-Nested List'''
@@ -212,7 +187,7 @@ def initial_fit(data,xlabel,ylabel,func):
         print('Residual Plot : ', i, ' to ', ylabel[0])
         simple_plot(data, [ylabel[0], res_label], 'Residual')
         
-    #for param in data:                           #plot features to residuals to reveal possible trends explaining difference
+    #for param in data:                           #plot features to residuals to reveal possible trends not explained by estimate
     #    simple_plot(data, [param, res_label], 'Residual')
         
     return data, [func1,popt,pcov]
@@ -221,8 +196,8 @@ def ols_fit(data,xlabel,ylabel):
     temp_df = pd.DataFrame(data)
     X = temp_df[xlabel]
     Y = temp_df[ylabel]
-    #X = sm.add_constant(X)        #i think this is adding a 'constant' or intercept i.e. Bo
-    model = sm.OLS(Y,X).fit()     #does a line equation need an intercept??
+    #X = sm.add_constant(X)       #adds intercept if desired
+    model = sm.OLS(Y,X).fit()     
     print(model.summary())
     return model,model.predict(X)
 
@@ -318,7 +293,7 @@ for connect in param_data:
         for param in params.keys():   
             temp = []
             for archive in param_data[connect][comp_type]:                    #appends archive file data as single list
-                temp.append(param_data[connect][comp_type][archive][param])   #loses archive file orgin
+                temp.append(param_data[connect][comp_type][archive][param])   
             temp = list(flatten(temp))
             comb_data[connect][comp_type][param] = temp
         comb_df[connect][comp_type] = pd.DataFrame(comb_data[connect][comp_type]) 
@@ -344,99 +319,49 @@ with open('initial_corr_dict.txt', 'a') as outfile:
             outfile.write('\n')
     outfile.close()              
 '''
-'''Plot Parameters to Radius For Initial Comparison'''
+
+'''Ideal Usage of PYTHON Statistical Tools'''
+
+'''Check Initial Correlations between Features and Radius (Linear)'''
+#print(initial_corr)
+
+'''Plot Features to Visualize Relationship to Radius'''
 #merge_plot(comb_data, 'Combine', [params.keys(),archive_dict.keys()])
 #merge_plot(param_data, 'Separate', params.keys())                      #separate keeps archive designation
 #for param in params.keys():
-#    simple_plot(comb_data['Indirect']['Apical'], [param,'RADIUS'],'Basic')
+    #simple_plot(comb_data['Indirect']['Apical'], [param,'RADIUS'],'Basic')
 #_3d_plot(param_data, params.keys())
 
-'''Initiate Fit and Residuals'''
+'''Initiate Fit and Residuals for Best Feature to Estimate Radius'''
 #DA_PR, DA_PR_fit = initial_fit(comb_data['Direct']['Apical'], [['PARENT_RAD'],['RADIUS']], [func0,'y = mx + b'])
-'''
-IA_PR, IA_PR_fit = initial_fit(comb_data['Indirect']['Apical'], ['PARENT_RAD'], ['RADIUS'], [func0,'y = mx + b'])
+#IA_PR, IA_PR_fit = initial_fit(comb_data['Indirect']['Apical'], ['PARENT_RAD'], ['RADIUS'], [func0,'y = mx + b'])
 
-trans_PTE = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
-trans_PTE = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
-trans_PTE = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values 
-trans_PTE = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values
+'''Utilize statsmodels.ols for Multiple Regression and send in possible Transformed Feature Values'''
+#trans_PTE = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
+#trans_PTE = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
+#trans_PTE = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values 
+#trans_PTE = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values
 
-trans_ND = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-trans_ND = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-trans_ND = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-trans_ND = [1/(1+np.exp(i)) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
+#trans_ND = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
+#trans_ND = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
+#trans_ND = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
+#trans_ND = [1/(1+np.exp(i)) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
 
-fit_data = {}
+#fit_data = {}                      #will hold selected features to fit to Radius
 
-fit_data['trans_PTE'] = trans_PTE
-fit_data['trans_ND'] = trans_ND
-fit_data['PARENT_RAD'] = comb_data['Indirect']['Apical']['PARENT_RAD']
-fit_data['RADIUS'] = comb_data['Indirect']['Apical']['RADIUS']
-model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS')
-'''
-'''
-for param in IA_PR:
-    simple_plot(IA_PR, ['PATH_TO_END','PARENT_RAD_Res',param], 'Color3d')
-#Beginnings to transform the data to explain residuals with path_to_end plot
-log_IA_PR = {}
-for param in IA_PR.keys():
-    log_IA_PR[param] = []
-    if param != 'PARENT_RAD_Res' and param != 'PATH_TO_END':
-        log_IA_PR[param] = [np.log(val) if val != 0 else 0 for val in IA_PR[param]]
-    else:
-        log_IA_PR[param] = IA_PR[param]
+#fit_data['trans_PTE'] = trans_PTE
+#fit_data['trans_ND'] = trans_ND
+#for param in params:
+    #fit_data[param] = comb_data['Indirect']['Apical']['PARENT_RAD']
+#model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS') #can send in multiple X values to estimate Y
 
-for param in log_IA_PR:
-    simple_plot(log_IA_PR, ['PATH_TO_END','PARENT_RAD_Res',param], 'Color3d')
+'''Plot Transformed Values with Radius or Residuals to better Select Equation Features'''
+#fit_data['residuals'] = []
+#for yval,prediction in zip(fit_data['RADIUS'],predictions):
+    #fit_data['residuals'].append(yval - prediction)
 
-e_IA_PR = {}
-for param in IA_PR.keys():
-    e_IA_PR[param] = []
-    if param != 'PARENT_RAD_Res' and param != 'PATH_TO_END':
-        e_IA_PR[param] = [round(1/np.exp(val),4) if val != 0 else 0 for val in IA_PR[param]]
-    else:
-        e_IA_PR[param] = IA_PR[param]
-'''
-#if only single feature to transform and plot        
-#test = {}       
-#test['PARENT_RAD_Res'] = IA_PR['PARENT_RAD_Res']
-#test['PATH_TO_END'] = IA_PR['PATH_TO_END']
-#test['NODE_DEGREE'] = [round(np.exp(val),4) if val != 0 else 0 for val in IA_PR['NODE_DEGREE']]
-#simple_plot(test,['PATH_TO_END','PARENT_RAD_Res','NODE_DEGREE'], 'Color3d')
-'''
-for param in e_IA_PR:
-    simple_plot(e_IA_PR, ['PATH_TO_END','PARENT_RAD_Res',param], 'Color3d')
-'''
-#code to 'create' or transform new features from existing ones
-#>>> temp = []
-#>>> temp = [x1*x2 for x1,x2 in zip(IA_PR['PATH_TO_END'],IA_PR['NODE_DEGREE'])]
-#>>> IA_PR['PTE_ND'] = temp
-#>>> IA_PR.keys()
-#>>> simple_plot(IA_PR, ['PATH_TO_END','PARENT_RAD_Res','PTE_ND'], 'Color3d')
+#for param in fit_data:
+    #simple_plot(fit_data, ['PATH_TO_END', residuals, param], 'Color3d')
 
-#IA_PR_Res_corr = corr(IA_PR, [i for i in IA_PR.keys() if i != 'DIRECT_SOMA'])
 
-'''
-for param in IA_PR:
-    plot(IA_PR, 'Simple', [param, 'PARENT_RAD_Res'], ['Post'])
-'''
-#could try and transform data now...
-
-#try stepwise regression --> add features at a time and keep if R is increased
-#plot residuals to remaining parameters
-
-#temp_frame = pd.DataFrame(temp_dict)
-#model = forward_selected(temp_frame, 'RADIUS')
-#print(model.model.formula)
-#print(model.rsquared_adj)
-
-'''Data Transformations'''
-
-#THINGS TO TRY
-#Separating the Direct Soma points (0) and (1) to see if they have separate equations to estimate radius
-#transform the data to see any nonlinear relationships (if linear after the transformation)
-#Check to see why direct_soma nodes have differing values of Soma Radius...(or their parent radius)
-
-#TODO
-#Implement Random Forest with parameters ideal for Radius estimation (want to lower the amount of features needed BUT still have an accurate equation for estimate)
 
