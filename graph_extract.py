@@ -1,5 +1,5 @@
 '''<Extracts data values from .swc files>
-    Copyright (C) <2019>  <Jonathan Reed>
+    Copyright (C) <2020>  <Jonathan Reed>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -22,8 +22,10 @@
 #Mar. 1, 2020
 
 import numpy as np
+import math
 from scipy import optimize
 from scipy.stats import pearsonr
+from scipy.stats import linregress
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
@@ -62,7 +64,7 @@ def save_png(png, title):               #default for all plots instead of plotti
 
     
 '''Main Plot Function for Basic, Fit or 3d Color Plots'''
-def simple_plot(data, var_labels, plot_type, fit_line = None): 
+def simple_plot(data, var_labels, plot_type, fit_line = None, _alpha = None): 
     #plt.ion()                                     #default commented out to avoid extensive numbers of plots to screen
     fig = plt.figure(figsize = (14,8))
     if plot_type == 'Color3d':                 #plot 3 variables, with variable 2 using colorbar
@@ -71,7 +73,10 @@ def simple_plot(data, var_labels, plot_type, fit_line = None):
         fig.colorbar(scat) 
         title = plot_type + ' Plot: ' + var_labels[0] + ' vs ' + var_labels[1] + ' vs ' + var_labels[2]
     else:                                      #plot 2 variables either within or outside fit function
-        plt.plot(data[var_labels[0]], data[var_labels[1]], 'o', label = plot_type) #can set alpha = 0.03 to see overlapping values on plot
+        if _alpha:
+            plt.plot(data[var_labels[0]], data[var_labels[1]], 'o', alpha = _alpha, label = plot_type) #can set alpha = 0.03 to see overlapping values on plot
+        else:
+            plt.plot(data[var_labels[0]], data[var_labels[1]], 'o', label = plot_type) 
         if plot_type == 'Fit':                 #plot fitted equation with data values
             plt.plot(fit_line[0], fit_line[1], color = 'orange', label = fit_line[2]) #residual currently only line
         title = plot_type + ' Plot: ' + var_labels[0] + ' vs ' + var_labels[1]        #could be useful if points for certain plots
@@ -146,7 +151,7 @@ def corr(data,keys):
     for rparam in keys:                                  #helpful for initial relation to Radius and multicollinearity
         for cparam in keys:
             corr_df.loc[rparam,cparam] = round(pearsonr(data[rparam],data[cparam])[0],4)
-    return corr_df
+    return corr_df                                       #compare with results from scipy.stats.linregress
 
 
 '''Fit Data to Selected Equation and Obtain Residuals'''
@@ -158,7 +163,6 @@ def initial_fit(data,xlabel,ylabel,func):
         for i in xlabel: 
             temp.append(data[i])  
         x = tuple(temp)           
-                                  
     else:
         x = data[xlabel[0]]
     y = data[ylabel[0]]                             #assumes only fit to single y-variable
@@ -176,27 +180,22 @@ def initial_fit(data,xlabel,ylabel,func):
         simple_plot(data, [i, ylabel[0]], 'Fit', [x_range, func[0](x_range, *popt), func[1]])
             #fails here if sending in >1 x variable with too many values to unpack error
         res_label = str(i) + '_Res'  
-        prediction = []; residuals = []
-        data[res_label] = []
-        for x in data[i]:                        #prediction of y-value based on fitted function
-            predict_y = func[0](x,*popt)
-            prediction.append(predict_y)
-        for y_val, y_predict in list(zip(data[ylabel[0]],prediction)):
-            residuals.append(y_val - y_predict)  #difference of actual y-value to predicted for residual calculation
-        data[res_label] = residuals
+        predictions = [func[0](x,*popt) for x in data[i]]
+        data[res_label] = [yval - est for yval,est in zip(data[ylabel[0]],predictions)]
         print('Residual Plot : ', i, ' to ', ylabel[0])
         simple_plot(data, [ylabel[0], res_label], 'Residual')
         
     #for param in data:                           #plot features to residuals to reveal possible trends not explained by estimate
     #    simple_plot(data, [param, res_label], 'Residual')
         
-    return data, [func1,popt,pcov]
+    return data, [popt,pcov]
     
-def ols_fit(data,xlabel,ylabel):
+def ols_fit(data,xlabel,ylabel,constant = None):
     temp_df = pd.DataFrame(data)
     X = temp_df[xlabel]
     Y = temp_df[ylabel]
-    #X = sm.add_constant(X)       #adds intercept if desired
+    if constant:
+        X = sm.add_constant(X)       #adds intercept if desired #<-- could make this if statement
     model = sm.OLS(Y,X).fit()     
     print(model.summary())
     return model,model.predict(X)
@@ -250,32 +249,26 @@ for d1 in dirs:
 
     if not 'Basal' in archive_dict.keys():                  #archive_dict will hold all possible .swc values as list within dictionary
         archive_dict['Basal'] = {}                          #'Basal' and 'Apical' (if present) as dictionaries within archive_dict
-    basal_list = list(zip(*basal_list))                           #zip shifts column/row to call all parameter data by parameter number as tuple
-    archive_dict['Basal'][d1] = basal_list
+    archive_dict['Basal'][d1] = list(zip(*basal_list))  
     if apical_list:
         if not 'Apical' in archive_dict.keys():
             archive_dict['Apical'] = {}                         
-        apical_list = list(zip(*apical_list))
-        archive_dict['Apical'][d1] = apical_list
+        archive_dict['Apical'][d1] = list(zip(*apical_list))
 
         
 '''Separate Data by Connection to Soma (either 0 -> directly connected, 1 -> all others)'''
 params = {key:header[key] for key in header if key not in str_list}   #new dictionary to hold useful features to Radius
 param_data = {}                                                       #maintains archive file orgin
-
 param_data['Direct'] = {}                #directly connected to soma
 param_data['Indirect'] = {}              #all other nodes (excluding soma points)
 
 #Fill Dictionaries by Connection to Soma (as 0, others as 1) for all parameters
 for comp_type in archive_dict:                         
-    param_data['Direct'][comp_type] = {}
-    param_data['Indirect'][comp_type] = {}
+    param_data['Direct'][comp_type] = {}; param_data['Indirect'][comp_type] = {}
     for archive in archive_dict[comp_type]:
-        param_data['Direct'][comp_type][archive] = {}
-        param_data['Indirect'][comp_type][archive] = {}
+        param_data['Direct'][comp_type][archive] = {}; param_data['Indirect'][comp_type][archive] = {}
         for param in params.keys():
-            param_data['Direct'][comp_type][archive][param] = []
-            param_data['Indirect'][comp_type][archive][param] = []
+            param_data['Direct'][comp_type][archive][param] = []; param_data['Indirect'][comp_type][archive][param] = []
         for num,val in enumerate(archive_dict[comp_type][archive][header['DIRECT_SOMA']]):
             for param in params.keys():                  #if directly connected (0) to soma --> Direct, else (1) --> Indirect
                 if val == 0:
@@ -333,32 +326,36 @@ with open('initial_corr_dict.txt', 'a') as outfile:
 #_3d_plot(param_data, params.keys())
 
 '''Initiate Fit and Residuals for Best Feature to Estimate Radius'''
-#DA_PR, DA_PR_fit = initial_fit(comb_data['Direct']['Apical'], [['PARENT_RAD'],['RADIUS']], [func0,'y = mx + b'])
+#DA_PR, DA_PR_fit = initial_fit(comb_data['Direct']['Apical'], ['PARENT_RAD'],['RADIUS'], [func0,'y = mx + b'])
 #IA_PR, IA_PR_fit = initial_fit(comb_data['Indirect']['Apical'], ['PARENT_RAD'], ['RADIUS'], [func0,'y = mx + b'])
-
+#for param in IA_PR.keys():
+    #simple_plot(IA_PR,[param,'PARENT_RAD_Res'],'Residual') #prints residuals if commented out in fit function
+    
 '''Utilize statsmodels.ols for Multiple Regression and send in possible Transformed Feature Values'''
-#trans_PTE = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
-#trans_PTE = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
+#how to represent infinity appropriately...
+#trans_PTE = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]  #how do we effectively approach infinite values or address properly
+#trans_PTE = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #(-np.finfo('d').max) for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
+
 #trans_PTE = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values 
-#trans_PTE = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values
+#trans_PTE = [1/(1+np.exp(i)) if i < np.log(np.finfo('d').max) else 1 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values
 
 #trans_ND = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
 #trans_ND = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
 #trans_ND = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-#trans_ND = [1/(1+np.exp(i)) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
+#trans_ND = [1/(1+np.exp(i)) if i < np.log(np.finfo('d').max) else 1 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
 
 #fit_data = {}                      #will hold selected features to fit to Radius
 
 #fit_data['trans_PTE'] = trans_PTE
 #fit_data['trans_ND'] = trans_ND
 #for param in params:
-    #fit_data[param] = comb_data['Indirect']['Apical']['PARENT_RAD']
+    #fit_data[param] = comb_data['Indirect']['Apical'][param]
 #model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS') #can send in multiple X values to estimate Y
+#model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS','constant')
 
 '''Plot Transformed Values with Radius or Residuals to better Select Equation Features'''
-#fit_data['residuals'] = []
-#for yval,prediction in zip(fit_data['RADIUS'],predictions):
-    #fit_data['residuals'].append(yval - prediction)
+#fit_data['residuals'] = [yval - est for yval,est in zip(fit_data['RADIUS'],predictions)]
+#simple_plot(fit_data, ['RADIUS',residuals], 'Residual', _alpha = 0.3)
 
 #for param in fit_data:
     #simple_plot(fit_data, ['PATH_TO_END', residuals, param], 'Color3d')
