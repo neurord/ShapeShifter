@@ -19,7 +19,7 @@
 '''Must use Python 3 for seemless usage in statsmodels package'''
 #George Mason University
 #Jonathan Reed
-#Mar. 1, 2020
+#Mar. 12, 2020
 
 import numpy as np
 import math
@@ -30,22 +30,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 from mpl_toolkits.mplot3d import Axes3D
-import statsmodels.api as sm
+from matplotlib.offsetbox import AnchoredText
 
+import statsmodels.api as sm
+import random
+import seaborn as sns
 import argparse
 import os
 import glob
 import re
 
 '''Function Definitions for Fit Equations'''
-
-def inverse_func(X,m1,m2,b):  #x2 currently sent in as 1/(value within Path to End)
-    x1,x2 = X
-    return m1*x1 + m2*x2 + b  #(where 1 --> Parent Radius and 2 --> Path to End)
-
 def func0(x,m,b):                                     
     return m*x+b
-
 
 '''Flatten Nested List to Single Non-Nested List'''
 def flatten(container):    
@@ -62,29 +59,61 @@ def save_png(png, title):               #default for all plots instead of plotti
     print('File Created : ' + str(title))
     png.close()
 
+'''Will Split N sequences into 'equal' sizes'''
+def split_seq(seq, size):
+        newseq = []
+        splitsize = 1.0/size*len(seq)
+        for i in range(size):
+                newseq.append(seq[int(round(i*splitsize)):int(round((i+1)*splitsize))])
+        return newseq
     
 '''Main Plot Function for Basic, Fit or 3d Color Plots'''
-def simple_plot(data, var_labels, plot_type, fit_line = None, _alpha = None): 
+def simple_plot(data, var, _alpha, title, legend = None, plot_type = None, labels = None, fit_line = None, add = None, where = None): 
     #plt.ion()                                     #default commented out to avoid extensive numbers of plots to screen
-    fig = plt.figure(figsize = (14,8))
-    if plot_type == 'Color3d':                 #plot 3 variables, with variable 2 using colorbar
-        fig, ax = plt.subplots(figsize = (14,8))
-        scat = ax.scatter(data[var_labels[0]], data[var_labels[1]], c=data[var_labels[2]], s=100, marker='o', label=var_labels[2])
-        fig.colorbar(scat) 
-        title = plot_type + ' Plot: ' + var_labels[0] + ' vs ' + var_labels[1] + ' vs ' + var_labels[2]
-    else:                                      #plot 2 variables either within or outside fit function
-        if _alpha:
-            plt.plot(data[var_labels[0]], data[var_labels[1]], 'o', alpha = _alpha, label = plot_type) #can set alpha = 0.03 to see overlapping values on plot
+    fig, ax = plt.subplots(figsize = (14,8))
+    plt.rc('font', size = 18)
+    
+    if add:
+        at = AnchoredText(add,
+                  prop=dict(size=14), frameon=True,
+                  loc='upper center',
+                  )
+        at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2") #maybe look for ways to remove border around annotation
+        ax.add_artist(at)
+        
+    if plot_type == 'Color3d':                     #plot 3 variables(x,y,z), with variable 2 as 'z' using colorbar
+        scat = ax.scatter(data[var[0]], data[var[1]], c=data[var[2]], s=100, marker='o', alpha = _alpha, label=legend)
+        fig.colorbar(scat)
+    elif plot_type == 'Fit':                       #plot initial fitted equation to data values
+        plt.plot(data[var[0]], data[var[1]], 'o', alpha = _alpha)
+        plt.plot(fit_line[0], fit_line[1], color = 'orange', label = fit_line[2]) 
+        legend = True
+    else:
+        if len(data) > 1:                          #plot multiple data sets with same axes
+            for num in range(len(data)): 
+                if legend:
+                    plt.plot(data[num][var[0]], data[num][var[1]], 'o', alpha = _alpha[num], label = legend[num])
+                else:
+                    plt.plot(data[num][var[0]], data[num][var[1]], 'o', alpha = _alpha)
         else:
-            plt.plot(data[var_labels[0]], data[var_labels[1]], 'o', label = plot_type) 
-        if plot_type == 'Fit':                 #plot fitted equation with data values
-            plt.plot(fit_line[0], fit_line[1], color = 'orange', label = fit_line[2]) #residual currently only line
-        title = plot_type + ' Plot: ' + var_labels[0] + ' vs ' + var_labels[1]        #could be useful if points for certain plots
-    plt.legend()
-    plt.xlabel(var_labels[0])
-    plt.ylabel(var_labels[1])
+            if legend:                             #plot single data set
+                plt.plot(data[var[0]], data[var[1]], 'o', alpha = _alpha, label = legend)
+            else:
+                plt.plot(data[var[0]], data[var[1]], 'o', alpha = _alpha)
+    if legend:
+        if where:
+            plt.legend(loc = where)
+        else:
+            plt.legend()
+    if labels:
+        plt.xlabel(labels[0])
+        plt.ylabel(labels[1])
+    else:
+        plt.xlabel(var[0])           #default will label axes with data label
+        plt.ylabel(var[1])
     plt.title(title)
-    save_png(plt, title + '.png')
+    save_png(plt,title + '.png')
+
 
 '''Initial Plot Function comparing Archive Data'''
 def merge_plot(data, to, extras):
@@ -144,49 +173,38 @@ def _3d_plot(data,extras):                 #plot features to Radius for 3-d visu
                 plt.legend()
             save_png(plt, connect + ' ' + comb[0] + ' ' + comb[1] + ' ' + 'RADIUS' + '.png')
 
-                
 '''Pearson's r Correlation for Feature Relationships'''
+
 def corr(data,keys):
     corr_df = pd.DataFrame(index = keys, columns = keys) #correlation of all features to each other
     for rparam in keys:                                  #helpful for initial relation to Radius and multicollinearity
         for cparam in keys:
             corr_df.loc[rparam,cparam] = round(pearsonr(data[rparam],data[cparam])[0],4)
-    return corr_df                                       #compare with results from scipy.stats.linregress
-
+    return corr_df                                      
 
 '''Fit Data to Selected Equation and Obtain Residuals'''
 def initial_fit(data,xlabel,ylabel,func):
-    
-    '''Fit Data to Choosen Function'''
-    if len(xlabel) > 1:       #if xlabel has more than single variable for fit
-        temp = []             #fit multiple x-variables to y
-        for i in xlabel: 
-            temp.append(data[i])  
-        x = tuple(temp)           
-    else:
-        x = data[xlabel[0]]
+    x = data[xlabel[0]]
     y = data[ylabel[0]]                             #assumes only fit to single y-variable
     popt, pcov = optimize.curve_fit(func[0],x,y)    #fits equation to choosen function if possible
     print('This is fit estimate for : ', func[1])
     print('popt',popt)
     print('pcov',pcov)
     print('Where x = ', xlabel, ' and y = ', ylabel) 
-
+ 
     '''Plot Data to Function and Find Residuals'''
-    for i in xlabel:          #plot x-variables individually to y and fitted function
+    for i in xlabel:
         temp_max = round(max(data[i])) 
         temp_min = round(min(data[i]))
         x_range = np.arange(temp_min, temp_max + 1, 1)
-        simple_plot(data, [i, ylabel[0]], 'Fit', [x_range, func[0](x_range, *popt), func[1]])
-            #fails here if sending in >1 x variable with too many values to unpack error
+        simple_plot(data, [i, ylabel[0]], 1.0, 'Fitted Equation ' + i + ' to ' + ylabel[0], fit_line = [x_range, func[0](x_range, *popt), func[1]])
         res_label = str(i) + '_Res'  
         predictions = [func[0](x,*popt) for x in data[i]]
+        simple_plot(data, [ylabel[0], predictions], 1.0, 'Predicted vs. Actual Plot : ' + i)
+        
         data[res_label] = [yval - est for yval,est in zip(data[ylabel[0]],predictions)]
         print('Residual Plot : ', i, ' to ', ylabel[0])
-        simple_plot(data, [ylabel[0], res_label], 'Residual')
-        
-    #for param in data:                           #plot features to residuals to reveal possible trends not explained by estimate
-    #    simple_plot(data, [param, res_label], 'Residual')
+        simple_plot(data, [ylabel[0], res_label], 1.0, 'Residual Plot : ' + i)
         
     return data, [popt,pcov]
     
@@ -200,7 +218,11 @@ def ols_fit(data,xlabel,ylabel,constant = None):
     print(model.summary())
     return model,model.predict(X)
 
-
+def save_file(coeff,filename):
+    new_file = open(filename,'w')
+    for i in coeff:
+        new_file.write(str(i) + '\n')
+    
 '''Start of Working Code'''
 
 
@@ -212,13 +234,15 @@ path = args.path
 '''Locates and Organizes Archive Data'''
 root, dirs, files = list(os.walk(path))[0]                    #all _extract files require identical parameters
 archive_dict = {}; header = {}                                
-str_list = ['PARENT','X','Y','Z','CHILD','TYPE','NUM_ENDS']   #parameters not useful or unique for Radius comparision
+file_list = []; complete_list = []
 
 for d1 in dirs:
     fullpath = path + d1 + '/*CNG_extract.txt'
     data_list = []; apical_list = []; basal_list = []
     print('Working on Directory : ', str(d1))
     for fname in glob.glob(fullpath):                               #locates and loops through _extract files within fullpath
+        temp_name = re.search(d1 + '/(.*).txt', fname)
+        file_list.append(temp_name.group(1))
         with open(fname) as f:
             for line in f:
                 if line.strip():                                    #removes any empty lines
@@ -239,28 +263,65 @@ for d1 in dirs:
                             for point, val in enumerate(temp_line):        #Child, Type, Parent use DESCRETE numerical labelling from .swc
                                 if point != header['CHILD'] and point != header['TYPE'] and point != header['PARENT']:
                                     temp_line[point] = float(temp_line[point])
-                            data_list.append(temp_line)                   
-
-    for line in data_list:
+                            temp_line.append(temp_name.group(1))
+                            temp_line.append(d1)
+                            data_list.append(temp_line)
+                            complete_list.append(temp_line)
+                            
+    '''Separation of Data By Apical/Basal Compartment Type & Archive Orgin'''
+    for line in data_list:                                  #data_list has all compartment values
         if line[header['TYPE']] == '4':                     #splits by node type (Apical or Basal if present)
             apical_list.append(line)                        #currently recognizes only Apical and Basal types 
         elif line[header['TYPE']] == '3':
-            basal_list.append(line)
+            basal_list.append(line)                        
 
     if not 'Basal' in archive_dict.keys():                  #archive_dict will hold all possible .swc values as list within dictionary
         archive_dict['Basal'] = {}                          #'Basal' and 'Apical' (if present) as dictionaries within archive_dict
-    archive_dict['Basal'][d1] = list(zip(*basal_list))  
+    archive_dict['Basal'][d1] = list(zip(*basal_list))
     if apical_list:
         if not 'Apical' in archive_dict.keys():
             archive_dict['Apical'] = {}                         
         archive_dict['Apical'][d1] = list(zip(*apical_list))
 
-        
+'''Separation of Data By Apical/Basal Compartment Type'''
+complete_dict = {}  
+temp_list = list(zip(*complete_list))
+header['FNAME'] = len(header)        #useful for splitting data into training and test sets
+header['ARCHIVE'] = len(header)
+for num,param in enumerate(header):
+    complete_dict[param] = temp_list[num]
+
+if '4' in complete_dict['TYPE']:       #checks if there is at least one apical compartment
+    apical_dict = {}; basal_dict = {}  #creates new dictionaries of only values within apical or basal compartment types
+    for param in header:
+        apical_dict[param] = []
+        basal_dict[param] = []
+    for num,i in enumerate(complete_dict['TYPE']):
+        if i == '4':                   #will only keep apical and basal compartments separately, not axonal if present
+            for param in header:
+                apical_dict[param].append(complete_dict[param][num])
+        elif i == '3':
+            for param in header:
+                basal_dict[param].append(complete_dict[param][num])
+                
+if not '4' in complete_dict['TYPE']:   #checks if there is no apical compartments
+    temp_dict = {}
+    for param in header:
+        temp_dict[param] = []
+    for num,i in enumerate(complete_dict['TYPE']):
+        if i == '3':                   #will only keep basal compartments, not axonal if present
+            for param in header:
+                temp_dict[param].append(complete_dict[param][num])
+    basal_dict = temp_dict
+
+
 '''Separate Data by Connection to Soma (either 0 -> directly connected, 1 -> all others)'''
+str_list = ['PARENT','X','Y','Z','CHILD','NUM_ENDS']   #parameters not useful or unique for Radius comparision
 params = {key:header[key] for key in header if key not in str_list}   #new dictionary to hold useful features to Radius
 param_data = {}                                                       #maintains archive file orgin
 param_data['Direct'] = {}                #directly connected to soma
 param_data['Indirect'] = {}              #all other nodes (excluding soma points)
+
 
 #Fill Dictionaries by Connection to Soma (as 0, others as 1) for all parameters
 for comp_type in archive_dict:                         
@@ -283,25 +344,80 @@ for connect in param_data:
     for comp_type in param_data[connect]:   
         if not comp_type in comb_data[connect].keys():
             comb_data[connect][comp_type] = {}; comb_df[connect][comp_type] = {}
-        for param in params.keys():   
-            temp = []
-            for archive in param_data[connect][comp_type]:                    #appends archive file data as single list
-                temp.append(param_data[connect][comp_type][archive][param])   
-            temp = list(flatten(temp))
-            comb_data[connect][comp_type][param] = temp
+        for param in params.keys():
+            if param != 'FNAME' and param != 'ARCHIVE' and param != 'TYPE':
+                temp = []
+                for archive in param_data[connect][comp_type]:                    #appends archive file data as single list
+                    temp.append(param_data[connect][comp_type][archive][param])   
+                temp = list(flatten(temp))
+                comb_data[connect][comp_type][param] = temp
         comb_df[connect][comp_type] = pd.DataFrame(comb_data[connect][comp_type]) 
 
+'''Separation by Connection to Soma'''
+'''
+new_basal = {}; new_apical = {}
+for i in param_data:
+    new_basal[i] = {}
+
+for i in new_basal:
+    for param in params:
+        new_basal[i][param] = []
+        for archive in dirs:
+            new_basal[i][param].append(param_data[i]['Apical'][archive][param])
+        new_basal[i][param] = list(flatten(new_basal[i][param]))
+
+simple_plot([new_basal['Indirect'],new_basal['Direct']],['PARENT_RAD','RADIUS'],[1,1],'Apical Hippocampus Compartments_SC', legend = ['Continuing','Initial'], labels = ['Parent Radius','Radius'])
+'''
+
+'''Separation by Archive'''
+'''
+new_basal = {}; new_apical = {}
+for i in dirs:
+    new_basal[i] = {}
+
+for i in new_basal:
+    for param in params:
+        new_basal[i][param] = []
+        for connect in param_data:
+            new_basal[i][param].append(param_data[connect]['Basal'][i][param])
+        new_basal[i][param] = list(flatten(new_basal[i][param]))
+
+#simple_plot([new_basal[dirs[0]],new_basal[dirs[1]]],['PARENT_RAD','RADIUS'],[1,1],'Basal Hippocampus Compartments', legend = list(dirs), labels = ['Parent Radius','Radius'])
+'''
         
 '''Parameter Correlation (Pearson's r) to Radius For Linear Relationships'''
+'''
 initial_corr = {}
-excluded = ['DIRECT_SOMA','NODE_ORDER','NODE_COUNT']       #not useful for nodes directly connected to soma
+excluded = ['DIRECT_SOMA','NODE_ORDER','NODE_COUNT','FNAME','ARCHIVE','TYPE']       #not useful for nodes directly connected to soma
+
 for connect in comb_data:
     initial_corr[connect] = {}
     for comp_type in comb_data[connect]:
         if connect == 'Direct':
             initial_corr[connect][comp_type] = corr(comb_data[connect][comp_type], [i for i in params.keys() if i not in excluded])
         else:
-            initial_corr[connect][comp_type] = corr(comb_data[connect][comp_type], [i for i in params.keys() if i != 'DIRECT_SOMA'])
+            initial_corr[connect][comp_type] = corr(comb_data[connect][comp_type], [i for i in params.keys() if i != 'DIRECT_SOMA' and i != 'FNAME' and i != 'ARCHIVE' and i != 'TYPE'])
+'''
+#do we need to limit which parameters go into correlation
+
+'''
+test_dict = {key:val for key,val in comb_data['Direct']['Basal'].items() if key != 'DIRECT_SOMA' and key != 'NODE_ORDER' and key != 'NODE_COUNT'}
+columns = ['Branch Length','Horton Strahler', 'Node Degree', 'Parent Radius', 'Path Distance', 'Path to End', 'Radius'] #for initial comps
+#columns = ['Branch Length','Horton Strahler', 'Node Count', 'Node Degree', 'Node Order', 'Parent Radius', 'Path Distance', 'Path to End', 'Radius'] #for continuing comps
+test_df = pd.DataFrame(test_dict)
+try_corr = test_df.corr()
+fig,ax = plt.subplots()
+plt.rc('font', size = 15)
+#fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)
+sns.set(font_scale = 1.4)
+ax = sns.heatmap(try_corr,vmin = -1,vmax = 1, center = 0,cmap = sns.diverging_palette(20, 220, n=256),square = True,annot = True,cbar_kws={'label':"Pearson's R"})
+#ax.set_xticklabels(test_df.keys(), rotation=45, horizontalalignment='right')
+ax.set_yticklabels(columns)
+ax.set_xticklabels(columns, rotation=45, horizontalalignment='right')
+plt.title('Initial Basal Compartments')
+plt.show()
+'''
+
 '''
 with open('initial_corr_dict.txt', 'a') as outfile:
     for connect in initial_corr:
@@ -313,6 +429,7 @@ with open('initial_corr_dict.txt', 'a') as outfile:
     outfile.close()              
 '''
 
+
 '''Ideal Usage of PYTHON Statistical Tools'''
 
 '''Check Initial Correlations between Features and Radius (Linear)'''
@@ -322,43 +439,113 @@ with open('initial_corr_dict.txt', 'a') as outfile:
 #merge_plot(comb_data, 'Combine', [params.keys(),archive_dict.keys()])
 #merge_plot(param_data, 'Separate', params.keys())                      #separate keeps archive designation
 #for param in params.keys():
-    #simple_plot(comb_data['Indirect']['Apical'], [param,'RADIUS'],'Basic')
+    #simple_plot(comb_data['Indirect']['Apical'], [param,'RADIUS'], 1.0, 'Basic Plot : ' + param + ' to Radius')
+    #complete_dict does not remove axon compartments
 #_3d_plot(param_data, params.keys())
 
 '''Initiate Fit and Residuals for Best Feature to Estimate Radius'''
 #DA_PR, DA_PR_fit = initial_fit(comb_data['Direct']['Apical'], ['PARENT_RAD'],['RADIUS'], [func0,'y = mx + b'])
 #IA_PR, IA_PR_fit = initial_fit(comb_data['Indirect']['Apical'], ['PARENT_RAD'], ['RADIUS'], [func0,'y = mx + b'])
 #for param in IA_PR.keys():
-    #simple_plot(IA_PR,[param,'PARENT_RAD_Res'],'Residual') #prints residuals if commented out in fit function
+    #simple_plot(IA_PR,[param,'PARENT_RAD_Res'], 1.0, 'Residual Plot : ' + param + ' to Parent Radius Residual')
     
 '''Utilize statsmodels.ols for Multiple Regression and send in possible Transformed Feature Values'''
-#how to represent infinity appropriately...
-#trans_PTE = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']]  #how do we effectively approach infinite values or address properly
-#trans_PTE = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #(-np.finfo('d').max) for i in comb_data['Indirect']['Apical']['PATH_TO_END']]
-
-#trans_PTE = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values 
-#trans_PTE = [1/(1+np.exp(i)) if i < np.log(np.finfo('d').max) else 1 for i in comb_data['Indirect']['Apical']['PATH_TO_END']] #high values
-
-#trans_ND = [1/i if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-#trans_ND = [np.log(i) if i != 0 else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-#trans_ND = [1/np.exp(i) if i < np.log(np.finfo('d').max) else 0 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-#trans_ND = [1/(1+np.exp(i)) if i < np.log(np.finfo('d').max) else 1 for i in comb_data['Indirect']['Apical']['NODE_DEGREE']]
-
 #fit_data = {}                      #will hold selected features to fit to Radius
-
-#fit_data['trans_PTE'] = trans_PTE
-#fit_data['trans_ND'] = trans_ND
 #for param in params:
     #fit_data[param] = comb_data['Indirect']['Apical'][param]
+
+
 #model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS') #can send in multiple X values to estimate Y
 #model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS','constant')
 
+
+#fit_data['comb_feat2'] = [1/(1 + np.exp(ND*PTE)) if ND*PTE < np.log(np.finfo('d').max) else 1 for ND,PTE in zip(fit_data['NODE_DEGREE'],fit_data['PATH_TO_END'])]
+
+#fit_data[new_try] = [1/j if j >= 1 else 1 for j in fit_data[i]]
+#fit_data[new_try] = [np.log(j) if j >= 1 else 0 for j in fit_data[i]]
+#fit_data[new_try] = [1/np.exp(j) if j < np.log(np.finfo('d').max) else 0 for j in fit_data[i]] #high values gives overflow error: larger values will evaluate towards 0
+#fit_data[new_try] = [1/(1+np.exp(j)) for j in fit_data[i]]
+#fit_data[new_try] = [np.sqrt(j) for j in fit_data[i]]
+
+#for i in fit_data1:
+    #maxed = max(fit_data[i])
+    #new_try = str(i) + '_try'
+    #fit_data[new_try] = [(dp * maxed)/((dp/2) * val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
+    #fit_data[new_try] = [(dp * maxed)/((dp/2) + val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
+    #fit_data[new_try] = [(dp * val)/((dp/2) * val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
+    #fit_data[new_try] = [(dp * val)/((dp/2) + val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
+    #fit_data[new_try] = [np.log(val) if val >= 1 else 0 for val in fit_data[i]]
+    #model,predictions = ols_fit(fit_data,['PARENT_RAD',new_try],'RADIUS')
+    #model,predictions = ols_fit(fit_data,[new_try],'RADIUS')
+    #model,predictions = ols_fit(fit_data,['PARENT_RAD',new_try],'RADIUS','constant')
+    #model,predictions = ols_fit(fit_data,[new_try],'RADIUS','constant')
+
+#for i in params:
+    #new_try = str(i) + '_try'
+    #fit_data[new_try] = [1/j if j >= 1 else 1 for j in fit_data[i]]
+    #model,predictions = ols_fit(fit_data,['PARENT_RAD',new_try],'RADIUS')
+
+
 '''Plot Transformed Values with Radius or Residuals to better Select Equation Features'''
 #fit_data['residuals'] = [yval - est for yval,est in zip(fit_data['RADIUS'],predictions)]
-#simple_plot(fit_data, ['RADIUS',residuals], 'Residual', _alpha = 0.3)
+#simple_plot(fit_data, ['RADIUS','residuals'], 'Residual', _alpha = 0.3)
 
 #for param in fit_data:
     #simple_plot(fit_data, ['PATH_TO_END', residuals, param], 'Color3d')
 
+'''Separate Training and Testing Data and Determine Single Equation Coefficients'''
+
+#random.seed(14)
+
+file_copies = list(file_list) 
+random.Random(14).shuffle(file_copies) #how would you split up data from single file...
+#random.seed(14)
+#random.shuffle(file_copies)
+split_files = split_seq(file_copies,2)
+training_files = split_files[0]
+testing_files = split_files[1]
+
+
+#num_comps = len(basal_dict['CHILD'])
+'''
+comp_list = [i for i in range(len(basal_dict['CHILD']))]
+copy_list = list(comp_list)
+random.Random(14).shuffle(copy_list)
+split_files = split_seq(copy_list,2)
+training_files = split_files[0]
+testing_files = split_files[1]
+'''
+training_basal = {}
+testing_basal = {}
+
+for param in header.keys():
+    training_basal[param] = []
+    testing_basal[param] = []
+for num,i in enumerate(basal_dict['FNAME']):
+    #for num in copy_list:
+    if i in training_files:
+        for param in header.keys():
+            training_basal[param].append(basal_dict[param][num])
+    else:
+        for param in header.keys():
+            testing_basal[param].append(basal_dict[param][num])
+        
+train_basal = training_basal
+test_basal = testing_basal
+#train_apical['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_apical['DIRECT_SOMA'],train_apical['PARENT_RAD'])]
+#train_apical['Cont_PR'] = [SC*PR for SC,PR in zip(train_apical['DIRECT_SOMA'],train_apical['PARENT_RAD'])]
+#train_apical['Init_logPD'] = [(1-SC)*np.log(PD) for SC,PD in zip(train_apical['DIRECT_SOMA'],train_apical['PATH_DIS'])]
+train_basal['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_basal['DIRECT_SOMA'],train_basal['PARENT_RAD'])]
+train_basal['Cont_PR'] = [SC*PR for SC,PR in zip(train_basal['DIRECT_SOMA'],train_basal['PARENT_RAD'])]
+model,predictions = ols_fit(train_basal,['Init_PR','Cont_PR'],'RADIUS')
+train_coef = model.params
+save_file(train_coef,'Basal Ganglia Coeff')
+train_basal['predictions'] = predictions
+#test_apical['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*SC*PR + train_coef[2]*SC*np.log(PD) for SC,PR,PD in zip(test_apical['DIRECT_SOMA'],test_apical['PARENT_RAD'],test_apical['PATH_DIS'])]
+test_basal['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*SC*PR for SC,PR in zip(test_basal['DIRECT_SOMA'],test_basal['PARENT_RAD'])]
+f_stat = '{:.2e}'.format(model.fvalue)
+r_val = '{:.4}'.format(model.rsquared_adj)
+additions = 'F-Statistic : ' + f_stat + ' Adjusted R-Squared : ' + r_val
+simple_plot([train_basal,test_basal],['RADIUS','predictions'],[1,0.3],'Parent Radius Predicted vs. Actual: Basal Basal Ganglia', legend = ['Training','Testing'], add = additions,labels = ['Radius','predictions'])
 
 
