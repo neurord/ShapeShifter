@@ -65,45 +65,57 @@ import math
 import argparse
 import collections
 import numpy as np
-
+from extract_dynamic import create_dict
+import matplotlib.pyplot as plt
 debug=0   #default is 0
 info=0    #default is 1
 #Globals for compartment values stored in list structure
 CHILD = 0; PARENT = 1; X = 2; Y = 3; Z = 4; DIA = 5; COMPLEN = 6; END_DIS = 7
-
 class morph:
-        def __init__(self,pfile):
-                self.readfile(pfile)
+        def __init__(self,swcfile):
+                converted_to_p = self.convert_p(swcfile)
+                self.soma_count(converted_to_p)
                 self.remove_zeros()
+                self.filename = filename.split('.swc')[0] + '_shift.swc'
+                self.outfile = open(self.filename, 'w')
+                #should give option to either create .p file or .swc file after conversion,etc.
                 
-        def readfile(self,pfile):
-                '''Read from .p file and set to list'''
-                self.pfile=pfile
-                self.linelist = []
-                out_name=pfile.split('.p')[0]+'out.p'
-                self.outfile = open(out_name, 'w')
-                lines=open(pfile, 'r').readlines()
-                self.lines = lines
-                print('***Number of compartments in .p file: ', len(self.lines), '***')
-
+        def convert_p(self,swcfile):
+                copy_lines = []; newlines = []; parlist = []; converted = []
+                lines = open(swcfile, 'r').readlines()
+                
+                #copies intended values for .pfile from .swcfile into temp. list
                 for line in lines:
-                        if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r':
-                                if len(line) > 5:                           #5 is arbitrary cutoff for which text lines (by length) are desired
-                                        self.linelist.append(line.split())  #empty lines between .pfile text actually have len = 2, so they are not caught in len = None
-                                else:
-                                        self.outfile.write('\n')
-                        else:
-                                self.outfile.write(line) #writes commented portion of original file to created file
-                
-                '''Conversion from strings --> floats for numbered values'''
-                for num,line in enumerate(self.linelist):
-                        for id, val in enumerate(line):
-                                if id >= X and id <= DIA:
-                                        line[id] = float(line[id])
-                                else:
-                                        line[id] = str(line[id])
-                                        
-                '''Checks for 1-pt or 3-pt soma'''
+                    if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#':
+                        copy_line = line.split()
+                        copy_lines.append(copy_line)
+                        
+                #list of parent values
+                for x in range(5):
+                        parlist.append(list(zip(*copy_lines))[x])
+                        
+                for num,line in enumerate(copy_lines):
+                    newline = line[:6]
+                    newline[0] = (str(line[0]) + '_' + str(line[1]))
+                    if num == 0: #soma line always first in .swc file, unique parent-type 'none'
+                        newline[1] = 'none'
+                        for x in range(2,5):
+                                newline[x] = float(copy_lines[num][x])#round(float(copy_lines[num][x]) - float(parlist[x][parent_index]),4)
+                        #newline[5] = copy_line[5]#round(float(newline[5])*2,4)
+                    else:
+                        parent_index = parlist[0].index(line[6])  #parlist[0] refers to parent location of comp at line[6]
+                        parent_type = parlist[1][parent_index]
+                        for x in range(2,5):
+                            newline[x] = round(float(copy_lines[num][x]) - float(parlist[x][parent_index]),4)
+                        newline[1] = str(line[6]) + '_' + str(parent_type)
+                    newline[5] = round(float(newline[5])*2,4) #.p file format takes diameter values instead of radius
+                    converted.append(newline)
+                return(converted)
+
+        def soma_count(self,pfile):
+                #Read from .p file and set to list                                    
+                #Checks for 1-pt or 3-pt soma 
+                self.linelist = pfile
                 line = self.linelist[0]; comp1 = self.linelist[1]; comp2 = self.linelist[2]
                 parcomplist = []
                 if line[X] == 0 and line[Y] == 0 and line[Z] == 0:
@@ -117,19 +129,22 @@ class morph:
                                         for val in [X,Y,Z]:
                                                 line[val] = comp1[val]-comp2[val]   #Change XYZ values of soma; no longer 0,0,0
                                         del self.linelist[2]
-                                        del self.linelist[1]
+                                        del self.linelist[1] #maybe if wanting to save back to .swc, will need to add in remaining soma points again...
                                         print('***Soma comps adjusted --> compare original and output files***')
+                                        copied = [line for line in self.linelist if line != comp1 and line != comp2]
+                                        self.linelist = list(copied)
+                                        
                 else:
                         print('***Soma comp. detected w/o XYZ coordinates 0,0,0***')
                         
         def remove_zeros(self): 
                 newlines=[]; parent_dict = {}
-                '''Calculate compartment length from XYZ values'''
+                #Calculate compartment length from XYZ values
                 for line in self.linelist:
                         complen = np.sqrt((line[X])**2 + (line[Y])**2 + (line[Z])**2)
                         line.append(complen) 
                         
-                '''Remove Zeroes and Replace oldparent id with newparent id'''
+                #Remove Zeroes and Replace oldparent id with newparent id
                 for line in self.linelist:
                         #removes any compartments with 0 distance or diameter OTHER THAN soma
                         if((line[DIA] == 0  or line[COMPLEN] == 0) and line[PARENT] != 'none'):
@@ -142,7 +157,7 @@ class morph:
                         else:
                                 newlines.append(line)
                                 
-                '''Call to change parent if removing 0_compartments'''
+                #Call to change parent if removing 0_compartments
                 if parent_dict: #checks if parent_dict has any items, THEN does recursion
                         print('Zero point compartments removed; remaining comparments require parent-update for reconnection')
                         print(parent_dict)
@@ -169,6 +184,8 @@ class morph:
                         if counter>0:
                                 print('fixed line', counter ,line)
                         return line
+
+
 
 def calc_lambda (type1, RM, RI, CM, F):
         tm = RM * CM #time constant
@@ -262,7 +279,7 @@ def branch_comp(linelist):
         parents = [line[PARENT] for line in linelist] #create a list of just parents
         parent_count = collections.Counter(parents)   #create dictionary giving number of times each parent occurs
         branch_points = [line[CHILD] for line in linelist if parent_count[line[CHILD]]>1] #set of parents that appear more than once
-        print('branch points', branch_points)
+        #print('branch points', branch_points)
         return branch_points, parents
 
 def end_comp(linelist, parents):
@@ -284,13 +301,16 @@ def calc_enddis(dis_to_end, par_comp, line, ending = 0):
 def condenser(m, type1, max_len, lambda_factor, rad_diff):
         num_comps=0
         ######## type = '0' removes 0 length compartments, this is done in the class, so just write file
-        if(type1 == "0"): 
+        if(type1 == "0"):
+                
                 for line in m.linelist:
                         write_file(m.outfile, line)
+                print('Removed Zero point Compartments : Created ' + m.filename)
 
         ####### type = "expand" takes long compartments and subdivides into multiple "segments"  --> in progress non-working version
         if (type1 == "expand"):
-                '''Expands linelist to include new created segments'''
+                #Expands linelist to include new created segments
+                
                 new_par = {} #holds all compartments whose parent needs to change with included segments
                 newlinelist = []
                 for num,line in enumerate(m.linelist):
@@ -309,9 +329,10 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                         if info:
                                 print ("OK", line)
 
-                '''Replaces parent-child of any compartment whose parent was expanded'''
+                #Replaces parent-child of any compartment whose parent was expanded
                 print(len(new_par),new_par)
                 print(len(newlinelist), newlinelist)
+                
                 #for line in newlinelist:                #change parent-child here
                 #m.replace_parent[comp1[0]]=myname[-1] maybe NOT call replace par as it would change ALL subsequent parent_child connections
                 #ONLY want to change the final newlines comp to original subsequent one
@@ -320,12 +341,12 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 #maybe do the re.search here for ANY subsequent compartment that would possibly connect
                 #maybe add the expand_list to correct position into linelist outside for loop
                 #write statement for entire line_list
-
-        branch_points, parents = branch_comp(m.linelist) #used in both type condense and type radii
-        
+        branch_points, parents = branch_comp(m.linelist)
         ######## type = condense condenses branches with similar radius and combined electronic length < 0.1 lambda
         if (type1 == "condense"):    #if rad_diff = 0, only condenses branches with same radius
                 #cvapp converts .swc to .p file format AND from absolute to relative coordinates
+                #print(m.linelist)
+                #print('Original Compartments : ' + len(m.linelist[0]))
                 Ltot = 0; surface_tot = 0; condense = [] #list to hold compartments to be condensed
                 for num,line in enumerate(m.linelist):
                         comp1 = line
@@ -363,10 +384,33 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 surface_tot=surface_tot+(math.pi * comp2[DIA] * length2)    
                         else:
                                 condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,comp2,m.outfile)
-        print ("finished,", len(m.linelist), "output compartments")
-
+                                
+                #temp_name = m.filename.split('.swc')[0] + '_condense.swc'
+                print('Created : ' + m.filename  )#+ ' with ' + len(m.linelist) + ' Condensed Compartments')
+                #print(len(m.outfile))
+                #print ("finished,", len(m.linelist), "output compartments")
+        
         ######## type = radii changes radius with distance dependent diameter equation from Lindroos et al 2018 'Basal Ganglia Neuromodulation'
         if (type1 =="radii"):
+                #find btmorph file with feature values
+                temp_name = m.filename.split('_shift.swc')[0] + '_extract.txt'
+                extracted = create_dict(temp_name) #<-- dictionary with btmorph feature values SKIPS soma compartment
+
+                #read in coefficients:
+                coeffs = open(coeff_file,'r').readlines()
+                coeffs = [float(i) for i in coeffs]
+
+                #transform values of radius based on coefficients selected
+                SC = extracted['DIRECT_SOMA']
+                PR = extracted['PARENT_RAD']
+                original_rad = [];new_rad = []
+                for num,line in enumerate(m.linelist[1:]):  #could send in the radius and predictions
+                        original_rad.append(line[DIA]/2)
+                        num= num
+                        new_rad.append(coeffs[0]*(1-SC[num])*PR[num] + coeffs[1]*SC[num]*PR[num])
+                plt.plot(original_rad,new_rad,'o')
+                plt.show()
+                '''
                 end_points = end_comp(m.linelist, parents)
                 print('branch points', branch_points)
                 print('end points', end_points)
@@ -384,7 +428,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                         print('branchpoint found at', line[CHILD], line[END_DIS])
                         else:                                                                                        #if line is normal compartment --> add end branch length
                                 dis_to_end, par_comp, line[END_DIS] = calc_enddis(dis_to_end, par_comp, line, 1)
-
+                
                 for num, line in enumerate(m.linelist[1:]):
                         #assuming soma diameter does not need to be changed
                         d1 = 0.001 * line[END_DIS]  + 0.87
@@ -404,7 +448,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 #L = dendritic length of branch rooted from given node i.e. distance to the end of longest branch from the given compartment, end_dis
                 #dp = diameter of parent node i.e. dia
                 #l = distance to parent node i.e. complen
-                
+                '''
 if __name__ == '__main__':
         #set default parameters
         rm = 4.00 #ohms-m^2 
@@ -417,6 +461,7 @@ if __name__ == '__main__':
         #set up argument parsers
         parser = argparse.ArgumentParser()
         parser.add_argument('--file')
+        parser.add_argument('--coeff')
         parser.add_argument('--type', choices={'0','condense','expand','radii'}, default='condense')
         parser.add_argument('--rad_diff', default=rad_diff, type=float)
         parser.add_argument('--rm', default=rm, type=float)
@@ -424,6 +469,9 @@ if __name__ == '__main__':
         parser.add_argument('--cm', default=cm, type=float)
         parser.add_argument('--f', default=f, type=float)
         parser.add_argument('--max_len', default=max_len, type=float)
+        args = parser.parse_args()
+        filename = args.file
+        coeff_file = args.coeff
         
         try:
 	        args = ARGS.split() #in python: define space-separated ARGS string
@@ -436,6 +484,6 @@ if __name__ == '__main__':
         newmorph=morph(h.file)
         #calculate lambda
         lambd_factor=calc_lambda(h.type, h.rm, h.ri, h.cm, h.f)
-        print('params', h, 'lambda', lambd_factor)
+        #print('params', h, 'lambda', lambd_factor)
         #Optionally, can condense multiple comps into one, expand large comp into multiple, or assign radii when there are none
         condenser(newmorph, h.type, h.max_len, lambd_factor, h.rad_diff)
