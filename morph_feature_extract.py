@@ -20,7 +20,7 @@
 
 #George Mason University
 #Jonathan Reed
-#May 25, 2020
+#May 26, 2020
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -39,7 +39,7 @@ def find_paths(swc_tree, node_data, stats, local_list):
             new_length = node_data[BRANCH_LEN] + comp_len
             new_endpath = node_data[PATH_TO_END] + comp_len 
             item.extend((node_data[END_POINT],node_data[BRANCH_POINT],new_length,new_endpath))
-            local_list = find_paths(swc_tree, item, stats, local_list)
+            local_list = find_paths(swc_tree, item, stats, local_list)     #recursive function to calculate all continuning compartments towards upstream branch point
     return local_list                                                    
 
 '''Flatten nested lists of values into single list of values'''
@@ -82,7 +82,7 @@ else:
         local_list.sort(key=lambda x: x[DEGREE])                 #sorted list by node degree
 
         '''Calculate Feature Values associated with Path Distances'''
-        #Start calculations from terminal branches with node degree = 0
+        #Start calculations from terminal branches with node degree = 1
         for item in stats._end_points:
             self_node = [c for c in local_list if c[COMP] == item]
             self_node[0].extend(([self_node[0][INDEX]],[0],0,0))
@@ -147,20 +147,17 @@ else:
                 temp.append(node.parent.index)                             #'Parent'          - Name of Parent Compartment
                 temp.append(node.parent.get_content()['p3d'].radius)       #'Parent Radius'   - Radius of Parent Compartment
                 temp.append(stats.get_pathlength_to_root(node))            #'Path Distance'   - Path from soma to Compartment
+                temp.append(stats.local_horton_strahler(node))             #'Horton Strahler' - Horton Strahler Branch Order
 
                 self_node = [c for c in local_list if c[COMP] == node]     #Feature values from local list calculations
-                temp.append(stats.local_horton_strahler(node))             #'Horton Strahler' - Horton Strahler Branch Order
-                temp.append(self_node[0][BRANCH_LEN])                      #'Branch Length    - Total Dendritic Length rooted at Compartment
+                temp.append(self_node[0][BRANCH_LEN])                      #'Branch Length'   - Total Dendritic Length rooted at Compartment
                 temp.append(self_node[0][PATH_TO_END])                     #'Path to End'     - Longest Path to Terminal End
                 temp.append(direct_to_soma[node.index])                    #'Direct Soma'     - Initial Compartments directly stemming from soma
-                if node in stats._bif_points:                              #'Branch Point'    - Branching/Bifurcation Compartments
-                    temp.append(0)  #if bifurcation or branching point
-                else:
-                    temp.append(1)  #if continuing segment
-                if node.parent in stats._bif_points:                       #'Branch Children' - Compartments stemming after branching/bifurcation
-                     temp.append(0) #if child to bifurcation or branching point
-                else:
-                    temp.append(1)  #if remaining segment
+                bif_point = 0 if node in stats._bif_points else 1          #'Branch Point'    - Branching/Bifurcation Compartments
+                temp.append(bif_point)
+                BP_child = 0 if node.parent in stats._bif_points else 1    #'Branch Children' - Compartments stemming after branching/bifurcation
+                temp.append(BP_child)
+
                 morph_list.append(temp)
 
         '''Save to file'''
