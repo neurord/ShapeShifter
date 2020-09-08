@@ -20,7 +20,7 @@
 
 #George Mason University
 #Jonathan Reed
-#May 26, 2020
+#September 8, 2020
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -122,17 +122,6 @@ else:
                     #calculate feature values by adding compartment length for compartments in-between branch compartments
                     local_list = find_paths(swc_tree, self_node[0], stats, local_list)
         
-        '''Calculate Initial Compartment as Feature Value'''
-        direct_to_soma = {}
-        for node in swc_tree.get_nodes():
-            if node.index not in soma:
-                if node.parent.index in soma:
-                    direct_to_soma[node.index] = 0
-                else:
-                    direct_to_soma[node.index] = 1
-            else:
-                direct_to_soma[node.index] = -1
-
         '''Organize all Feature Values by Compartment'''
         for node in swc_tree.get_nodes():
             if node.index not in soma:                                     #Each compartment has the following identifiers/features:
@@ -152,12 +141,12 @@ else:
                 self_node = [c for c in local_list if c[COMP] == node]     #Feature values from local list calculations
                 temp.append(self_node[0][BRANCH_LEN])                      #'Branch Length'   - Total Dendritic Length rooted at Compartment
                 temp.append(self_node[0][PATH_TO_END])                     #'Path to End'     - Longest Path to Terminal End
-                temp.append(direct_to_soma[node.index])                    #'Direct Soma'     - Initial Compartments directly stemming from soma
-                bif_point = 0 if node in stats._bif_points else 1          #'Branch Point'    - Branching/Bifurcation Compartments
-                temp.append(bif_point)
-                BP_child = 0 if node.parent in stats._bif_points else 1    #'Branch Children' - Compartments stemming after branching/bifurcation
-                temp.append(BP_child)
-
+                if node.parent.index in soma:                              #'Parent Connection' - Type of Compartment Connection to Previous Compartment
+                    temp.append(0)                                         #'0' - Initial Compartment (Parent is Soma)     
+                elif node.parent in stats._bif_points:                  
+                    temp.append(1)                                         #'1' - Branch Point Child (Parent is Branching Compartment)
+                else:
+                    temp.append(2)                                         #'2' - Continuing (Remaining Compartments)
                 morph_list.append(temp)
 
         '''Save to file'''
@@ -171,7 +160,7 @@ else:
         outfile.write('*Extracted .swc data on : ')
         outfile.write(str(datetime.datetime.now()) + '\n')
         outfile.write('\n')
-        outfile.write('*CHILD; TYPE; X; Y; Z; RADIUS; NODE_DEGREE; NODE_ORDER; PARENT; PARENT_RAD; PATH_DIS; HS; BRANCH_LEN; PATH_TO_END; DIRECT_SOMA; BRANCH_POINT; BP_CHILD')
+        outfile.write('*CHILD; TYPE; X; Y; Z; RADIUS; NODE_DEGREE; NODE_ORDER; PARENT; PARENT_RAD; PATH_DIS; HS; BRANCH_LEN; PATH_TO_END; PAR_CONNECT')
         outfile.write('\n')
 
         for line in morph_list:
