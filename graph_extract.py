@@ -20,7 +20,7 @@
 
 #George Mason University
 #Jonathan Reed
-#September 18, 2020
+#September 29, 2020
 
 import numpy as np
 from scipy import optimize
@@ -49,7 +49,7 @@ def main_plot(data, var, title, ax_titles = None, labels = None, save_as = None,
     fig, ax = plt.subplots(figsize = (20,10))          
     if add:                                            #additional information to plot
         at = AnchoredText(add,
-                          prop=dict(size=20), frameon=True,
+                          prop=dict(size=28), frameon=True,
                           loc='upper center')
         at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2") 
         ax.add_artist(at)
@@ -80,13 +80,16 @@ def main_plot(data, var, title, ax_titles = None, labels = None, save_as = None,
 def corr(data,selection,title,save_as = None):
     dframe = pd.DataFrame(data,columns = selection.keys())  #dataframe reorders alphabetically columns by default 
     dcorr = dframe.corr()                                   #set to order columns as in select_params - passed as 'selection'
+    for i in dcorr:
+        dcorr[i] = dcorr[i]**2                              #test to see if we can match r2 values from plots in correlation matrices
     fig,ax = plt.subplots(figsize = (20,15))
     sns.set(font_scale = 2.8)
     plt.rc('font', size = 26)
-    ax = sns.heatmap(dcorr,vmin = -1,vmax = 1, center = 0,cmap = sns.diverging_palette(20, 220, n=256),square = True,annot = True,cbar_kws={'shrink':1,'label':"Pearson's R"})
-    ax.set_yticklabels([sub['short'] for sub in selection.values()],fontsize = 30)
+    rsquared = '$r^2$'
+    #ax = sns.heatmap(dcorr,vmin = -1,vmax = 1, center = 0,cmap = sns.diverging_palette(20, 220, n=256),square = True,annot = True,cbar_kws={'shrink':1,'label':rsquared})#"Pearsons R"}
+    ax = sns.heatmap(dcorr,vmin = 0,vmax = 1, center = 0.5,cmap = 'Blues',square = True,annot = True,cbar_kws={'shrink':1,'label':rsquared})#"Pearsons R"})
+    ax.set_yticklabels([sub['short'] for sub in selection.values()],rotation = 0,fontsize = 30)
     ax.set_xticklabels([sub['short'] for sub in selection.values()],rotation = 0,horizontalalignment = 'right',fontsize = 30,ha = 'center')
-    ax.figure.axes[-1].yaxis.label.set_size(26)
     cbar = ax.collections[0].colorbar
     cbar.ax.tick_params(labelsize = 26)
     plt.title(title)   
@@ -139,14 +142,17 @@ def ols_fit(data,xlabel,ylabel,constant = None,extended = None):
         print(model.summary())     #by default no extended output printed within function
     return model,model.predict(X)
 
-def regress_val(model):
+def regress_val(model,split = None):
     f_stat = '{:.2e}'.format(model.fvalue)
     r_val = '{:.4}'.format(model.rsquared_adj)
     aic = '{:.4}'.format(model.aic)
     bic = '{:.4}'.format(model.bic)
     cond_num = '{:.4}'.format(model.condition_number)
-    vals = [f_stat,r_val,cond_num,aic,bic]
-    return vals
+    if split:
+        return f_stat,r_val
+    else:
+        vals = [f_stat,r_val,cond_num,aic,bic]
+        return vals
 
 '''Save equation coefficients and update file'''
 def add_coeff(temp_list, temp_dict, comp_type):
@@ -257,19 +263,18 @@ for d1 in dirs:                                      #can accept individual arch
 comp_types = [i for i in archive_dict.keys()]
 comp_list = ['Initial','BP_Child','Continuing','All']
 complete_dict = {}; sep_data = {}; comb_data = {}  #create dictionaries of separate or combined archive morphologies
-for i in comp_types:
-    complete_dict[i] = {}
-    for connect in comp_list:                                
-        if len(sep_data.keys()) != len(comp_list) and len(comb_data.keys()) != len(comp_list):
-            sep_data[connect] = {}; comb_data[connect] = {}
+
+for connect in comp_list:
+    sep_data[connect] = {}; comb_data[connect] = {}
+    for i in comp_types:
         sep_data[connect][i] = {}; comb_data[connect][i] = {}
         for param in header.keys():
             comb_data[connect][i][param] = []
-            if len(complete_dict[i].keys()) != len(header.keys()):
-                complete_dict[i][param] = []
+            if len(complete_dict.keys()) != len(header.keys()):
+                complete_dict[param] = []
             for d1 in dirs:
                 if connect == comp_list[0]:
-                    complete_dict[i][param].extend(archive_dict[i][d1][param])    #fill in values for complete_list only once
+                    complete_dict[param].extend(archive_dict[i][d1][param])
                 if len(sep_data[connect][i].keys()) != len(dirs):                 #create new sep_data dictionaries if not present
                     sep_data[connect][i][d1] = {}
                 sep_data[connect][i][d1][param] = []         
@@ -283,26 +288,18 @@ for i in comp_types:
                                 comb_data[ctype][i][param].append(archive_dict[i][d1][param][num])
 
 '''Select parameters to analyze with Compartment Diameter'''
-select_params = {'NODE_ORDER': {'short':'IB','long':'Initial Branch Order'},
-                 'PATH_TO_END': {'short':'LP','long':'Longest Path to Terminal'},
+select_params = {'BRANCH_LEN': {'short':'TD','long':'Total Dendritic Length'},
+                 'NODE_DEGREE': {'short':'TB','long':'Terminal Branch Order'},
+                 'NODE_ORDER': {'short':'IB','long':'Initial Branch Order'},
                  'PARENT_DIA': {'short':'PD','long':'Parent Diameter'},
                  'PATH_DIS': {'short':'PS','long':'Path To Soma'},
-                 'NODE_DEGREE': {'short':'TB','long':'Terminal Branch Order'},
-                 'BRANCH_LEN': {'short':'TD','long':'Total Dendritic Length'},
+                 'PATH_TO_END': {'short':'LP','long':'Longest Path to Terminal'},
                  'DIAMETER': {'short':'D','long':'Diameter'}}
 
 initial_params = {key:value for (key,value) in select_params.items() if key != 'NODE_ORDER'}
 #may have to make initial_params to not include Node_Order for plots as all same value
 
 '''Initial Plots and Parameter Analysis''' #save back in folder with fullpath os.cwd
-
-#could possibly save in separate location
-if not dirname in os.listdr(rootdir):
-    os.mndir(rootdir + dirname) #check for '/'
-    #rootdir + 'images'
-    #rootdir as os.getcwd()
-    #os.basename(fullpath) 
-    
 for i in comp_types:
     for param in select_params:
         if param != 'DIAMETER':
@@ -326,14 +323,12 @@ for i in comp_types:
                 label_list.append(label)
             main_plot(d1_data, [param,'DIAMETER'], title, ax_titles = [plabel,'Diameter'], labels = label_list, where = 'upper right', save_as = saving + ' A')
 
-            
 '''Extended Plots with Relation to Soma'''
 regress = {}                      #setup regression dictionary
 for i in comp_types:
     regress[i] = {}
     for connect in comp_list:     #setup correlation data for each compartment type
-        param_comb = []; regress[i][connect] = []
-        select_data = {}
+        param_comb = []; regress[i][connect] = []; select_data = {}
         selection = initial_params if connect == 'Initial' else select_params
         for p1 in selection:
             
@@ -353,10 +348,13 @@ for i in comp_types:
                         temp.extend(vals)
                         regress[i][connect].append(temp)
                         
-            '''Plot Correlations to Diameter''' 
+            '''Plot Correlations to Diameter'''
             select_data[p1] = comb_data[connect][i][p1]
-        title = i + ' ' + connect + ' Feature Correlation' 
-        corr(select_data, selection, title, save_as = title)  
+        
+        title = 'Correlation Dendrites'
+        saving = i + ' ' + connect + ' Feature Correlation'
+        corr(select_data, selection, 'Striatal Dendrites', save_as = saving)
+
 
 #print regression data and sort by r-squared
 for i in regress:
@@ -367,540 +365,72 @@ for i in regress:
         for test in regress[i][connect][::-1]:
             print(test)
 
-
-
-'''Additional Tools for Analysis'''
-#connect = 'Continuing'; comp_type = 'Basal'
-'''Transform Values after Visualization of Non-Linear Trends'''
-#if Non-Linear trends appear in parameter plots to Radius/Diameter, can add transformed values as new parameter
-'''
-old_param = 'PATH_DIS'; new_param = 'Log_' + old_param
-comb_data[connect][comp_type][new_param] = [np.log(i) for i in comb_data[connect][comp_type][old_param]]
-for param in [old_param,new_param]:
-    model,predictions = ols_fit(comb_data[connect][comp_type],param,'DIAMETER',extended = True)
-    main_plot(comb_data[connect][comp_type],[param,'DIAMETER'], param + ' to ' + 'DIAMETER') #see if trend becomes linear
-    if param == new_param:
-        comb_data[connect][comp_type][new_param + '_Res'] = [yval - est for yval,est in zip(comb_data[connect][comp_type][new_param],predictions)]
-        main_plot(comb_data[connect][comp_type],[param + '_Res','DIAMETER'], param + '_Res' + ' to ' + 'DIAMETER') #plot residuals
-    #can extend residuals to remaining parameters
-'''
-
-'''Plot Two Variables with Diameter with Colorbar'''
-'''
-var = ['PARENT_DIA','DIAMETER','PATH_DIS'] #var as x,y,z
-main_plot(comb_data[connect][comp_type], var, title, ax_titles = ['Parent Diameter','Diameter'], labels = var[2], plot_type = 'Color3d')
-'''
-
-#fit_data = {}                      #will hold selected features to fit to Radius
-#for param in params:
-    #fit_data[param] = comb_data['Indirect']['Apical'][param]
-
-
-#model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS') #can send in multiple X values to estimate Y
-#model,predictions = ols_fit(fit_data,['PARENT_RAD','trans_ND'],'RADIUS','constant')
-
-
-#fit_data['comb_feat2'] = [1/(1 + np.exp(ND*PTE)) if ND*PTE < np.log(np.finfo('d').max) else 1 for ND,PTE in zip(fit_data['NODE_DEGREE'],fit_data['PATH_TO_END'])]
-
-#fit_data[new_try] = [1/j if j >= 1 else 1 for j in fit_data[i]]
-#fit_data[new_try] = [np.log(j) if j >= 1 else 0 for j in fit_data[i]]
-#fit_data[new_try] = [1/np.exp(j) if j < np.log(np.finfo('d').max) else 0 for j in fit_data[i]] #high values gives overflow error: larger values will evaluate towards 0
-#fit_data[new_try] = [1/(1+np.exp(j)) for j in fit_data[i]]
-#fit_data[new_try] = [np.sqrt(j) for j in fit_data[i]]
-
-#for i in fit_data1:
-    #maxed = max(fit_data[i])
-    #new_try = str(i) + '_try'
-    #fit_data[new_try] = [(dp * maxed)/((dp/2) * val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
-    #fit_data[new_try] = [(dp * maxed)/((dp/2) + val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
-    #fit_data[new_try] = [(dp * val)/((dp/2) * val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
-    #fit_data[new_try] = [(dp * val)/((dp/2) + val) for dp,val in zip(fit_data['PARENT_RAD'],fit_data[i])]
-    #fit_data[new_try] = [np.log(val) if val >= 1 else 0 for val in fit_data[i]]
-    #model,predictions = ols_fit(fit_data,['PARENT_RAD',new_try],'RADIUS')
-    #model,predictions = ols_fit(fit_data,[new_try],'RADIUS')
-    #model,predictions = ols_fit(fit_data,['PARENT_RAD',new_try],'RADIUS','constant')
-    #model,predictions = ols_fit(fit_data,[new_try],'RADIUS','constant')
-
-#for i in params:
-    #new_try = str(i) + '_try'
-    #fit_data[new_try] = [1/j if j >= 1 else 1 for j in fit_data[i]]
-    #model,predictions = ols_fit(fit_data,['PARENT_RAD',new_try],'RADIUS')
-
-
-'''Plot Transformed Values with Radius or Residuals to better Select Equation Features'''
-#fit_data['residuals'] = [yval - est for yval,est in zip(fit_data['RADIUS'],predictions)]
-#simple_plot(fit_data, ['RADIUS','residuals'], 'Residual', _alpha = 0.3)
-
-#for param in fit_data:
-    #simple_plot(fit_data, ['PATH_TO_END', residuals, param], 'Color3d')
-
-'''Separate Training and Testing Data and Determine Single Equation Coefficients'''
-'''
-file_copies = list(file_list) 
-random.Random(14).shuffle(file_copies) 
+'''Separate Training and Testing Data'''
+seed = 14 
+file_copies = list(file_list)             #randomly separate files into training and testing sets
+random.Random(seed).shuffle(file_copies)
 split_files = split_seq(file_copies,2)
 training_files = split_files[0]
 testing_files = split_files[1]
 
-training_set = {} #will contain only needed parameters to train model
-coeffs = {} #will contain coefficients from model training
-training_all = {} #will contain all training values to verify fit
-testing_all = {}  #will contain all testing values to verify fit
-#testing to see if we can select which parameters to find and then iterate through regression code
-test_params = {}
-test_params['Apical'] = {'Initial':['PARENT_RAD','PATH_DIS'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
-test_params['Basal'] = {'Initial':['PARENT_RAD','PATH_DIS'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
-'''
+'''Choose which Features to Estimate Radius for Equations'''  #estimating radius as found in .swc morphologies
+test_params = {}      #'Apical' and 'Basal' are classification of compartment types within .swc morphologies
+test_params['Apical'] = {'Initial':['BRANCH_LEN','PATH_DIS'],'BP_Child':['PARENT_RAD','PATH_TO_END'],'Continuing':['PARENT_RAD']}
+test_params['Basal'] = {'Initial':['BRANCH_LEN','PATH_DIS'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
 
-#how to iterate between different comp. designations as some (1-SC)
-#Testing complete_dict and compartment designation as multiplier
-'''
-for param in complete_dict:
-    training_all[param] = []
-    testing_all[param] = []
+'''Create Equations to Predict Radius'''
+pdict = {0:'Initial',1:'Continuing',2:'BP_Child'}   #original data (#'s) to dictionary organization (terms)
+cdict = {'3':'Basal','4':'Apical'}
+newrads = {test_file:{} for test_file in testing_files}
+models = {}; split_data = {}; merge_data = {}
 
-for num,fname in enumerate(complete_dict['FNAME']):
-    for param in complete_dict:
-        if fname in training_files:
-            training_all[param].append(complete_dict[param][num])
-        elif fname in testing_files:
-            testing_all[param].append(complete_dict[param][num])
-'''
-'''
-for comp_type in test_params:
-    for connect in test_params[comp_type]:
-        if connect == 'Initial': #(1-SC) for SC in complete_dict['DIRECT_SOMA']
-        elif connect == 'BP_Child': #(BPC) for BPC in complete_dict['BP_CHILD']
-        elif connect == 'Continuing': #(1-BPC) for BPC in complete_dict['BP_CHILD']
+for i in comp_types: 
+    models[i] = {'Initial':[],'Continuing':[],'BP_Child':[]} #saves each model for initial, continuing, and branch point children
+    merge_data[i] = {'Train':{'pred':[],'org':[]},'Test':{'pred':[],'org':[]}} #saves original and predicted radii for plots
+    for connect in pdict.values():  
+        split_data = {'Train':{p:[] for p in header.keys()},'Test':{p:[] for p in header.keys()}} #will temporarily hold data values in model formation
+        for num,fname in enumerate(comb_data[connect][i]['FNAME']): 
+            for param in header.keys():
+                if fname in training_files:       #split data into training and testing sets to validate equations
+                    split_data['Train'][param].append(comb_data[connect][i][param][num])
+                elif fname in testing_files:
+                    split_data['Test'][param].append(comb_data[connect][i][param][num]) #may choose to remove split_data[test] since validating equations outside loops
+        
+        model,predictions = ols_fit(split_data['Train'],test_params[i][connect],'RADIUS',extended = True)
+        merge_data[i]['Train']['pred'].extend(predictions)
+        merge_data[i]['Train']['org'].extend(split_data['Train']['RADIUS']) 
+        models[i][connect] = {feature:model.params[num] for num,feature in enumerate(test_params[i][connect])}
+
+cd = complete_dict
+for num,(comp,parent,fname,ctype,pcon) in enumerate(zip(cd['CHILD'],cd['PARENT'],cd['FNAME'],cd['TYPE'],cd['PAR_CONNECT'])):
+    if fname in testing_files:                                #find new radius value for testing files
+    #if fname == '960924b.CNG_extract':
+        ctype = cdict[ctype]; pcon = pdict[pcon]
+        newrad = 0
+        for feature in test_params[ctype][pcon]:        
+            '''new predictions with updating parent radius'''
+            if feature == 'PARENT_RAD':                       #start with initial comps, with saved parent radius as soma val
+                if pcon == 'Initial':                   
+                    newrad = newrad + models[ctype][pcon][feature] * complete_dict['PARENT_RAD'][num]
+                else:                                         #if parent radius of any other comp, use updated radius
+                    newrad = newrad + models[ctype][pcon][feature] * newrads[fname][parent]
+                    
+            else:                                             #if other feature value, find and update radius
+                newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
+            '''old predictions with non-updating parent radius'''
+            #newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
             
-        model,predictions = ols_fit(training_set[comp_type][connect],test_params[comp_type][connect],'RADIUS',extended = True)
-
-        #setup model for each compartment designation --> check if using complete_dict gives same results as comb_data
-'''
-'''
-predict = {}
-for comp_type in test_params:
-    training_set[comp_type] = {}
-    coeffs[comp_type] = {}
-    predict[comp_type] = {'Train':[],'Test':[]}
-    #for val in complete_dict:
-    for connect in test_params[comp_type]:
-        training_set[comp_type][connect] = {}
-        coeffs[comp_type][connect] = {}
-        for param in params:
-            training_set[comp_type][connect][param] = []
-            for num,i in enumerate(comb_data[connect][comp_type]['FNAME']):
-                if i in training_files:      #for now, all parameter values available in training or testing sets
-                    training_set[comp_type][connect][param].append(comb_data[connect][comp_type][param][num])
-        #start multiple regression
-        print('**************** ' + comp_type + ' ' + connect + ' ****************')
-        model,_ = ols_fit(training_set[comp_type][connect],test_params[comp_type][connect],'RADIUS',extended = True)
-        coeffs[comp_type][connect] = [coeff for coeff in model.params]
-        for training_all, testing_all#...
-        for num,val in enumerate(complete_dict):
-            predict[comp_type]['Train'][num] = []
-            if connect == 'Initial':
-                newval = sum[newlist]
-            elif connect == 'BP_Child':
-            elif connect == 'Continuing':
-'''
+        newrads[fname][comp] = newrad                   
+        merge_data[ctype]['Test']['pred'].append(newrad)    
+        merge_data[ctype]['Test']['org'].append(complete_dict['RADIUS'][num])
         
+for i in comp_types:
+    model,_ = ols_fit(merge_data[i]['Test'],'pred','org')                                    
+    f_stat,r_val = regress_val(model,split = True)
+    f_label = 'F-Statistic : ' + f_stat
+    r_label = ' Average R : ' + r_val
+    additions = f_label +  r_label
+    title = i + ' Dendrites'
+    saving = i + ' Predicted Radii'
+    main_plot([merge_data[i]['Train'],merge_data[i]['Test']], ['org','pred'], title, ax_titles = ['Original Radius','Predicted Radius'], add = additions, labels = ['Training Set','Testing Set'], where = 'lower right', save_as=saving)
 
-#somehow combine the values in complete_dict with coefficients and parameters from test_params
-#hmm also have to combine with the training and testing sets...
-#testing_set[comp_type][connect]['train'] = predictions
-
-
-
-'''        
-temp_list = []; num_lists = []
-for num,test_param in enumerate(test_params[comp_type][connect]):
-    temp = [coeffs[num] * val for val in testing_set[comp_type][connect][test_param]]
-    temp_list.append(temp)
-    num_lists.append(temp_list[num])
-    #temp_list[num].append(temp)
-    
-total_list = list(chain(num_lists))  #<--- so close.....
-testing_set[comp_type][connect]['test'] = [coeff[i] * test_param[i] for coeff,test_param in zip(coeffs,test_params)]
-'''
-#(1-SC) - Initial
-#(BPC) - Branch Child
-#(1-BPC) - Continuing
-#model,predictions = ols_fit(comb_data[comb_type]['All'],[test1,test2],'RADIUS',extended = True)
-#will need to add with test and train sets
-
-
-#so I think it's working properly --> check test set with coefficients from train set
-#somehow automate and check to see predictions to Radius values for fit within dictionary structure
-#train_set['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_set['DIRECT_SOMA'],train_set['PARENT_RAD'])]
-#train_set['Init_ND'] = [(1-SC)*ND for SC,ND in zip(train_set['DIRECT_SOMA'],train_set['NODE_DEGREE'])]
-#model,predictions = ols_fit(train_set['comp_type'],['PARENT_RAD','NODE_DEGREE'],'RADIUS')                    
-
-'''            
-for connect in comb_data:
-    for num,i in enumerate(comb_data[connect][comp_type]['FNAME']):
-        if i in training_files:
-            for param in params:
-                training_set[connect][param].append(comb_data[connect][comp_type][param][num])
-        else:
-            for param in params:
-                testing_set[connect][param].append(comb_data[connect][comp_type][param][num])
-'''
-'''
-train_set = training_set 
-test_set = testing_set
-'''
-'''Find Best Models to Predict Radius''' #compare across f-value, r2, and condition #
-'''
-#cell_type = 'Apical'
-cell_type = 'Basal'
-#cell_type = 'Striatal'
-#cell_type = 'Purkinje'
-comp_list = ['Direct','BP_Child','Non_BP']
-for comp_type in comp_list: 
-    #comp_type = 'Direct'
-    save_name = cell_type + ' ' + comp_type + ' ' + 'Models'
-    for i in cont_params:
-        temp_list = []
-        model,predictions = ols_fit(train_set[comp_type],['PARENT_RAD',i],'RADIUS')
-        temp_dict = dict(model.params)
-        for i in temp_dict:
-            temp_list.append(i)
-            #temp_list.append(temp_dict[i])
-        temp_list.extend((model.fvalue, model.rsquared_adj,model.condition_number))
-        #print(new_name,temp_list)
-        save_file(temp_list, save_name)
-'''
-'''Save Coefficients to File'''
-
-'''Striatal Dendrites'''
-'''
-temp_list = []
-comp_type = 'Direct'
-#train_set['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_set['DIRECT_SOMA'],train_set['PARENT_RAD'])]
-#train_set['Init_ND'] = [(1-SC)*ND for SC,ND in zip(train_set['DIRECT_SOMA'],train_set['NODE_DEGREE'])]
-model,predictions = ols_fit(train_set['comp_type'],['PARENT_RAD','NODE_DEGREE'],'RADIUS')
-'''
-'''
-temp_dict = dict(model.params)
-for i in temp_dict:
-    add_name = comp_type + '_' + i
-    temp_list.append((add_name, temp_dict[i]))
-'''
-'''
-temp_list = add_coeff(temp_list,dict(model.params),comp_type)   #for some reason, more accurate to keep separate OLS per compartment type than all together
-for i in temp_list:
-    save_file(i,'SAVING_TEST')
-'''
-#save_file(model.params,'Striatal_Test')
-
-#train_set['BP_Child_PR'] = [(1-BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-#train_set['BP_Child_NO'] = [(1-BP)*NO for BP,NO in zip(train_set['BP_CHILD'],train_set['NODE_ORDER'])]
-#model,predictions = ols_fit(train_set['BP_Child'],['PARENT_RAD','NODE_ORDER'],'RADIUS')
-#save_file(model.params,'Striatal_Test')
-
-#train_set['Non_BP_PR'] = [(BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-#train_set['Non_BP_PD'] = [(BP)*PD for BP,PD in zip(train_set['BP_CHILD'],train_set['PATH_DIS'])]
-#model,predictions = ols_fit(train_set['Non_BP'],['PARENT_RAD','PATH_DIS'],'RADIUS')
-#save_file(model.params,'Striatal_Test')
-
-#model,predictions = ols_fit(train_set,['Init_PR','Init_ND','BP_Child_PR','BP_Child_NO','Non_BP_PR','Non_BP_PD'],'RADIUS')
-
-#train_coef = model.params
-#train_set['predictions'] = predictions
-#test_set['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*(1-SC)*ND + train_coef[2]*(1-BP)*PR + train_coef[3]*(1-BP)*NO + train_coef[4]*(BP)*PR + train_coef[5]*(BP)*PD for SC,BP,PR,ND,NO,PD in zip(test_set['DIRECT_SOMA'],test_set['BP_CHILD'],test_set['PARENT_RAD'],test_set['NODE_DEGREE'],test_set['NODE_ORDER'],test_set['PATH_DIS'])]
-
-
-'''Purkinje Dendrites'''
-'''
-#train_set['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_set['DIRECT_SOMA'],train_set['PARENT_RAD'])]
-#train_set['Init_PE'] = [(1-SC)*PE for SC,PE in zip(train_set['DIRECT_SOMA'],train_set['PATH_TO_END'])]
-model,predictions = ols_fit(train_set['Direct'],['PARENT_RAD','PATH_TO_END'],'RADIUS')
-save_file(model.params,'Purkinje_Test')
-
-#train_set['BP_Child_PR'] = [(1-BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-#train_set['BP_Child_PD'] = [(1-BP)*PD for BP,PD in zip(train_set['BP_CHILD'],train_set['PATH_DIS'])]
-model,predictions = ols_fit(train_set['BP_Child'],['PARENT_RAD','PATH_DIS'],'RADIUS')
-save_file(model.params,'Purkinje_Test')
-
-#train_set['Non_BP_PR'] = [(BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-#train_set['Non_BP_NO'] = [(BP)*NO for BP,NO in zip(train_set['BP_CHILD'],train_set['NODE_ORDER'])]
-model,predictions = ols_fit(train_set['Non_BP'],['PARENT_RAD','NODE_ORDER'],'RADIUS')
-save_file(model.params,'Purkinje_Test')
-
-
-#model,predictions = ols_fit(train_set,['Init_PR','Init_PE','BP_Child_PR','BP_Child_PD','Non_BP_PR','Non_BP_NO'],'RADIUS')
-
-#train_coef = model.params
-#train_set['predictions'] = predictions
-#test_set['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*(1-SC)*PE + train_coef[2]*(1-BP)*PR + train_coef[3]*(1-BP)*PD + train_coef[4]*(BP)*PR + train_coef[5]*(BP)*NO for SC,BP,PR,PE,PD,NO in zip(test_set['DIRECT_SOMA'],test_set['BP_CHILD'],test_set['PARENT_RAD'],test_set['PATH_TO_END'],test_set['PATH_DIS'],test_set['NODE_ORDER'])]
-'''
-
-'''Basal Dendrites'''
-'''
-#train_set['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_set['DIRECT_SOMA'],train_set['PARENT_RAD'])]
-#train_set['Init_BL'] = [(1-SC)*BL for SC,BL in zip(train_set['DIRECT_SOMA'],train_set['BRANCH_LEN'])]
-model,predictions = ols_fit(train_set['Direct'],['PARENT_RAD','BRANCH_LEN'],'RADIUS')
-#coefs = model.params
-#train_set['Direct']['predictions'] = predictions
-#test_set['Direct']['predictions'] = [model.params[0]*(1-SC)*PR + model.params[1]*(1-SC)*PE for SC,PR,PE in zip(test_set['Direct']['DIRECT_SOMA'],test_set['Direct']['PARENT_RAD'],test_set['Direct']['PATH_TO_END'])]
-save_file(model.params,'Basal_Test')
-save_file(model.params,'Pyramidal_Test')
-
-#train_set['BP_Child_PR'] = [(1-BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-#train_set['BP_Child_PD'] = [(1-BP)*PD for BP,PD in zip(train_set['BP_CHILD'],train_set['PATH_DIS'])]
-model,predictions = ols_fit(train_set['BP_Child'],['PARENT_RAD','PATH_DIS'],'RADIUS')
-#coefs = model.params
-save_file(model.params,'Basal_Test')
-save_file(model.params,'Pyramidal_Test')
-
-#train_set['Non_BP_PR'] = [(BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-model,predictions = ols_fit(train_set['Non_BP'],['PARENT_RAD'],'RADIUS')
-save_file(model.params,'Basal_Test')
-save_file(model.params,'Pyramidal_Test')
-
-
-#model,predictions = ols_fit(train_set,['Init_PR','Init_BL','BP_Child_PR','BP_Child_PD','Non_BP_PR'],'RADIUS')
-
-#train_coef = model.params
-#train_set['predictions'] = predictions
-
-#test_set['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*(1-SC)*BL + train_coef[2]*(1-BP)*PR + train_coef[3]*(1-BP)*PD + train_coef[4]*(BP)*PR for SC,BP,PR,BL,PD in zip(test_set['DIRECT_SOMA'],test_set['BP_CHILD'],test_set['PARENT_RAD'],test_set['BRANCH_LEN'],test_set['PATH_DIS'])]
-
-#save_file(train_coef,'Basal_Model')
-'''
-
-'''Apical Dendrites'''
-'''
-training_set = {}
-testing_set = {}
-for connect in comb_data:
-    training_set[connect] = {}
-    testing_set[connect] = {}
-    for param in params:
-        training_set[connect][param] = []
-        testing_set[connect][param] = []
-
-#comp_type = apical_dict
-comp_type = 'Apical'
-for connect in comb_data:
-    for num,i in enumerate(comb_data[connect][comp_type]['FNAME']):
-        if i in training_files:
-            for param in params:
-                training_set[connect][param].append(comb_data[connect][comp_type][param][num])
-        else:
-            for param in params:
-                testing_set[connect][param].append(comb_data[connect][comp_type][param][num])
-        
-train_set = training_set 
-test_set = testing_set
-
-#train_set['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_set['DIRECT_SOMA'],train_set['PARENT_RAD'])]
-#train_set['Init_PE'] = [(1-SC)*BL for SC,BL in zip(train_set['DIRECT_SOMA'],train_set['PATH_TO_END'])]
-model,predictions = ols_fit(train_set['Direct'],['PARENT_RAD','PATH_TO_END'],'RADIUS')
-#coefs = model.params
-#train_set['Direct']['predictions'] = predictions
-#test_set['Direct']['predictions'] = [model.params[0]*(1-SC)*PR + model.params[1]*(1-SC)*PE for SC,PR,PE in zip(test_set['Direct']['DIRECT_SOMA'],test_set['Direct']['PARENT_RAD'],test_set['Direct']['PATH_TO_END'])]
-save_file(model.params,'Apical_Test')
-save_file(model.params,'Pyramidal_Test')
-
-#train_set['BP_Child_PR'] = [(1-BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-#train_set['BP_Child_PE'] = [(1-BP)*PE for BP,PE in zip(train_set['BP_CHILD'],train_set['PATH_TO_END'])]
-model,predictions = ols_fit(train_set['BP_Child'],['PARENT_RAD','PATH_TO_END'],'RADIUS')
-#coefs = model.params
-save_file(model.params,'Apical_Test')
-save_file(model.params,'Pyramidal_Test')
-
-#train_set['Non_BP_PR'] = [(BP)*PR for BP,PR in zip(train_set['BP_CHILD'],train_set['PARENT_RAD'])]
-model,predictions = ols_fit(train_set['Non_BP'],['PARENT_RAD'],'RADIUS')
-save_file(model.params,'Apical_Test')
-save_file(model.params,'Pyramidal_Test')
-'''
-'''
-#model,predictions = ols_fit(train_set,['Init_PR','Init_BL','BP_Child_PR','BP_Child_PE','Non_BP_PR'],'RADIUS')
-#model,predictions = ols_fit(train_set,['Init_PR','Init_PD','BP_Child_PR','BP_Child_PE','Non_BP_PR'],'RADIUS')
-
-#model,predictions = ols_fit(train_set,['Init_PR','Init_ND','BP_Child_PR','BP_Child_PE','Non_BP_PR'],'RADIUS')
-#model,predictions = ols_fit(train_set,['Init_PR','Init_PE','BP_Child_PR','BP_Child_PE','Non_BP_PR'],'RADIUS')
-#train_coef = model.params
-#train_set['predictions'] = predictions
-
-#test_set['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*(1-SC)*BL + train_coef[2]*(1-BP)*PR + train_coef[3]*(1-BP)*PE + train_coef[4]*(BP)*PR for SC,BP,PR,BL,PE in zip(test_set['DIRECT_SOMA'],test_set['BP_CHILD'],test_set['PARENT_RAD'],test_set['BRANCH_LEN'],test_set['PATH_TO_END'])]
-#test_set['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*(1-SC)*PD + train_coef[2]*(1-BP)*PR + train_coef[3]*(1-BP)*PE + train_coef[4]*(BP)*PR for SC,BP,PR,PE,PD in zip(test_set['DIRECT_SOMA'],test_set['BP_CHILD'],test_set['PARENT_RAD'],test_set['PATH_TO_END'],test_set['PATH_DIS'])]
-
-#test_set['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*(1-SC)*ND + train_coef[2]*(1-BP)*PR + train_coef[3]*(1-BP)*PE + train_coef[4]*(BP)*PR for SC,BP,PR,PE,ND in zip(test_set['DIRECT_SOMA'],test_set['BP_CHILD'],test_set['PARENT_RAD'],test_set['PATH_TO_END'],test_set['NODE_DEGREE'])]
-#test_set['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*(1-SC)*PE + train_coef[2]*(1-BP)*PR + train_coef[3]*(1-BP)*PE + train_coef[4]*(BP)*PR for SC,BP,PR,PE in zip(test_set['DIRECT_SOMA'],test_set['BP_CHILD'],test_set['PARENT_RAD'],test_set['PATH_TO_END'])]
-'''
-'''
-r_list = []#; archive_r = {}
-#for i in dirs:
-    #archive_r[i] = []
-    
-for i in training_files:
-    temp_pred = []; temp_rad = []
-    for num, j in enumerate(train_set['FNAME']):
-        if j == i:
-            temp_pred.append(train_set['predictions'][num])
-            temp_rad.append(train_set['RADIUS'][num])
-    corr,_ = pearsonr(temp_pred,temp_rad)
-    r_list.append(corr)
-    
-for i in testing_files:
-    temp_pred = []; temp_rad = []
-    for num, j in enumerate(test_set['FNAME']):
-        if j == i:
-            temp_pred.append(test_set['predictions'][num])
-            temp_rad.append(test_set['RADIUS'][num])
-    corr,_ = pearsonr(temp_pred,temp_rad)
-    r_list.append(corr)
-
-ave_r = np.average(r_list)
-sd = np.std(r_list)
-print(ave_r,sd)
-
-f_label = 'F-Statistic : ' + '{:.2e}'.format(model.fvalue)
-r_label = ' Average R : ' + '{:.4}'.format(ave_r)
-additions = f_label +  r_label
-
-simple_plot([train_set,test_set],['RADIUS','predictions'],[1,0.3], 'Apical Dendrites', legend = ['Training','Testing'], add = additions,labels = ['Original Radius','Predicted Radius'], where = 'upper left')
-
-save_file(train_coef,'Apical_Model')
-'''
-
-'''
-[SC*BP*PR + (1-SC)*train_coef[1]*PTE + (1-SC)*train_coef[2]*PR + (1-BP)*train_coef[3]*PTE + (1-BP)*train_coef[4]*PR for SC,BP,PR,PTE in zip(test_basal['DIRECT_SOMA'],test_basal['BRANCH_POINT'],test_basal['PARENT_RAD'],test_basal['PATH_TO_END'])]
-
-#train_basal['Cont_PR'] = [(SC*BP)*PR for SC,BP,PR in zip(train_basal['DIRECT_SOMA'],train_basal['BRANCH_POINT'],train_basal['PARENT_RAD'])]
-#train_basal['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_basal['DIRECT_SOMA'],train_basal['PARENT_RAD'])]
-#train_basal['Init_PTE'] = [(1-SC)*PR for SC,PR in zip(train_basal['DIRECT_SOMA'],train_basal['PATH_TO_END'])]
-#train_basal['Init_PD'] = [(1-SC)*PR for SC,PR in zip(train_basal['DIRECT_SOMA'],train_basal['PATH_DIS'])]
-#train_basal['Branch_PR'] = [(1-SC)*PR for SC,PR in zip(train_basal['BRANCH_POINT'],train_basal['PARENT_RAD'])]
-#train_basal['Branch_PTE'] = [(1-SC)*PR for SC,PR in zip(train_basal['BRANCH_POINT'],train_basal['PATH_TO_END'])] #can run model regression fine
-
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_PTE','Init_PR','Branch_PTE','Branch_PR'],'RADIUS')      #get errors in predictions --> no plot yet
-train_coef = model.params
-train_basal['predictions'] = predictions
-test_basal = [SC*BP*PR + (1-SC)*train_coef[1]*PTE + (1-SC)*train_coef[2]*PR + (1-BP)*train_coef[3]*PTE + (1-BP)*train_coef[4]*PR for SC,BP,PR,PTE in zip(test_basal['DIRECT_SOMA'],test_basal['BRANCH_POINT'],test_basal['PARENT_RAD'],test_basal['PATH_TO_END'])]
-f_stat = '{:.2e}'.format(model.fvalue)
-#r_val = '{:.4}'.format(model.rsquared_adj)
-corr,_ = pearsonr(test_basal['predictions'],test_basal['RADIUS'])
-r_val = corr*2
-r_label = ' Adjusted $r^2$ = ' + r_val
-additions = 'F-Statistic : ' + f_stat + r_label #' Adjusted R-Squared : ' + r_val
-simple_plot([train_basal,test_basal],['RADIUS','predictions'],[1,0.3], 'Apical Hippocampus', legend = ['Training','Testing'], add = additions,labels = ['Radius','Predictions'])
-'''
-
-#####Extra Code for Possible Feature Analysis#####
-
-
-
-'''Initial Plot Function to compare between different archives'''
-'''
-def merge_plot(data, to, extras):
-    if to == 'Separate':                   #plot distinct archives based on connection to soma and compartment-type
-        for connect in data:               #separate plots for connection to soma, subplots for compartment-type
-            for param in extras:           
-                fig = plt.figure(figsize = (14,8))
-                for num,comp_type in enumerate(data[connect]):
-                    ax1 = fig.add_subplot(len(data[connect].keys()),1,num+1)
-                    for archive in data[connect][comp_type]:                  
-                        ax1.plot(data[connect][comp_type][archive][param], data[connect][comp_type][archive]['RADIUS'],'o',label = archive)
-                        ax1.set_title(comp_type) 
-                        plt.legend()
-                plt.xlabel(str(param))
-                plt.ylabel('Radius')
-                save_png(plt, str(connect) + ' ' + str(param) + ' vs ' + 'RADIUS' + '.png')
-
-    if to == 'Combine':                    #plot archives together based on connection to soma and compartment-type
-        for param in extras[0]:            #separate subplots for Apical/Basal compartment type
-            fig = plt.figure(figsize = (14,8))
-            for num,comp_type in enumerate(extras[1]):
-                ax1 = fig.add_subplot(len(extras[1]),1,num+1)
-                for connect in data:
-                    ax1.plot(data[connect][comp_type]['PARENT_RAD'], data[connect][comp_type][param], 'o', label = connect)
-                ax1.set_title(comp_type)  
-            plt.legend()                   #default is 'Parent Radius' to visualize difference of nodes directly connected to soma 
-            plt.xlabel('Parent Radius (um)') 
-            plt.ylabel(str(param))        
-            save_png(plt, 'Combined'  + ' ' + str(param) + ' vs ' + 'Parent Radius' + '.png')
-'''
-
-'''Initiate Fit and Residuals for Best Feature to Estimate Radius'''
-#DA_PR, DA_PR_fit = initial_fit(comb_data['Direct']['Apical'], ['PARENT_RAD'],['RADIUS'], [func0,'y = mx + b'])
-#IA_PR, IA_PR_fit = initial_fit(comb_data['Indirect']['Apical'], ['PARENT_RAD'], ['RADIUS'], [func0,'y = mx + b'])
-#for param in IA_PR.keys():
-    #simple_plot(IA_PR,[param,'PARENT_RAD_Res'], 1.0, 'Residual Plot : ' + param + ' to Parent Radius Residual')
-
-
-
-#num_comps = len(basal_dict['CHILD'])
-
-
-
-'''
-training_basal = {}
-testing_basal = {}
-new_params = [i for i in params.keys() if i == 'NODE_DEGREE' or i == 'PATH_DIS' or i == 'BRANCH_LEN' or i == 'PATH_TO_END' or i == 'PARENT_RAD' or i == 'RADIUS']
-for param in new_params:#header.keys():
-    training_basal[param] = []
-    testing_basal[param] = []
-for num,i in enumerate(new_basal['Direct']['FNAME']):
-    #(basal_dict['FNAME']):
-    #for num in copy_list:
-    if i in training_files:
-        for param in new_params:#header.keys():
-            training_basal[param].append(new_basal['Direct'][param][num])
-            #(basal_dict[param][num])
-    else:
-        for param in new_params:#header.keys():
-            testing_basal[param].append(new_basal['Direct'][param][num])
-            #basal_dict[param][num])
-        
-train_basal = training_basal
-test_basal = testing_basal
-train_basal['Cont_PR'] = [SC*PR for SC,PR in zip(train_basal['DIRECT_SOMA'],train_basal['PARENT_RAD'])]
-train_basal['Init_PR'] = [(1-SC)*PR for SC,PR in zip(train_basal['DIRECT_SOMA'],train_basal['PARENT_RAD'])]
-train_basal['Init_PD'] = [(1-SC)*PD for SC,PD in zip(train_basal['DIRECT_SOMA'],train_basal['PATH_DIS'])]
-train_basal['Init_PTE'] = [(1-SC)*PTE for SC,PTE in zip(train_basal['DIRECT_SOMA'],train_basal['PATH_TO_END'])]
-train_basal['Init_BL'] = [(1-SC)*BL for SC,BL in zip(train_basal['DIRECT_SOMA'],train_basal['BRANCH_LEN'])]
-
-train_basal['Init_logPD'] = [(1-SC)*np.log(PD) for SC,PD in zip(train_basal['DIRECT_SOMA'],train_basal['PATH_DIS'])]
-model,predictions = ols_fit(train_basal,['PARENT_RAD'],'RADIUS')
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_PR'],'RADIUS')
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_PTE'],'RADIUS')
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_BL'],'RADIUS')
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_PD'],'RADIUS')
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_logPD'],'RADIUS')
-
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_BL','Init_PD'],'RADIUS')
-model,predictions = ols_fit(train_basal,['Cont_PR','Init_PTE','Init_PD'],'RADIUS')
-
-train_coef = model.params
-train_basal['predictions'] = predictions
-#test_apical['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*SC*PR + train_coef[2]*SC*np.log(PD) for SC,PR,PD in zip(test_apical['DIRECT_SOMA'],test_apical['PARENT_RAD'],test_apical['PATH_DIS'])]
-#test_basal['predictions'] = [train_coef[0]*(1-SC)*PR + train_coef[1]*SC*PR for SC,PR in zip(test_basal['DIRECT_SOMA'],test_basal['PARENT_RAD'])]
-test_basal['predictions'] = [train_coef[0]*SC*PR + train_coef[1]*(1-SC)*BL + train_coef[2]*(1-SC)*PD for SC,PR,BL,PD in zip(test_basal['DIRECT_SOMA'],test_basal['PARENT_RAD'],test_basal['BRANCH_LEN'],test_basal['PATH_DIS'])]
-test_basal['predictions'] = [train_coef[0]*BL + train_coef[1]*PD for BL,PD in zip(test_basal['BRANCH_LEN'],test_basal['PATH_DIS'])]
-
-f_stat = '{:.2e}'.format(model.fvalue)
-r_val = '{:.4}'.format(model.rsquared_adj)
-r_label = ' Adjusted $r^2$ = ' + r_val
-additions = 'F-Statistic : ' + f_stat + r_label #' Adjusted R-Squared : ' + r_val
-simple_plot([train_basal,test_basal],['RADIUS','predictions'],[1,1],'Initial Purkinje Dendrites', legend = ['Training Set','Testing Set'], add = additions,labels = ['Original Radius','Predicted Radius'])
-simple_plot([train_basal,test_basal],['RADIUS','predictions'],[1,0.3], 'Apical Dendrite of Hippocampus: Initial Log Path Distance to Continuing Parent Radius', legend = ['Training','Testing'], add = additions,labels = ['Radius','Predictions'])
-save_file(train_coef,'A_Coefs')
-'''
-
-#must change plot function to == 2:
-#corr,_ = pearsonr(basal_dict['PARENT_RAD'],basal_dict['RADIUS'])
-#new_basal['Direct']['log_PD'] = [np.log(PD) for PD in new_basal['Direct']['PATH_DIS']]
-#new_apical['Direct']['log_PD'] = [np.log(PD) for PD in new_apical['Direct']['PATH_DIS']]
-
-#corr,_ = pearsonr(new_basal['Direct']['log_PD'],new_basal['Direct']['RADIUS'])
-#corr,_ = pearsonr(new_basal['Direct']['PARENT_RAD'],new_basal['Direct']['RADIUS'])
-#corr,_ = pearsonr(new_apical['Direct']['PARENT_RAD'],new_apical['Direct']['RADIUS'])
-#corr = round(corr**2,4)
-#testing = ' R Squared = ' + str(corr)
-#simple_plot(basal_dict,['PARENT_RAD','RADIUS'],.3,'Parent Radius to Radius: Hippocampal Proximal Dendrites',legend = testing, where = 'upper right', labels = ['Parent Radius','Radius'])
-#simple_plot(new_basal['Direct'],['log_PD','RADIUS'],1,'Log Path Distance to Radius: Hippocampal Initial Proximal Dendrites',legend = testing, where = 'upper left', labels = ['Log Path Distance','Radius'])
-#simple_plot(new_basal['Direct'],['log_PD','RADIUS'],1,'Log Path Distance to Radius: Cerebellar Initial Dendrites',legend = testing, where = 'upper left', labels = ['Log Path Distance','Radius'])
