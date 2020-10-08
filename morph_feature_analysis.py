@@ -20,7 +20,7 @@
 
 #George Mason University
 #Jonathan Reed
-#September 29, 2020
+#October 9, 2020
 
 import numpy as np
 from scipy import optimize
@@ -44,10 +44,13 @@ def save_png(png, title):               #default to save plots instead of plot t
     png.close()
     
 '''Main Plot Function for Basic, Fit or 3d Color Plots'''
-def main_plot(data, var, title, ax_titles = None, labels = None, save_as = None, plot_type = None, fit_line = None, add = None, where = None):
-    plt.rc('font', size = 28)                          #default plot and font sizes
-    fig, ax = plt.subplots(figsize = (20,10))          
-    if add:                                            #additional information to plot
+def main_plot(data, var, title, ax_titles = None, labels = None, save_as = None, plot_type = None, fit_line = None, add = None, where = None, size = None):
+    plt.rc('font', size = 28) #default plot and font sizes
+    if size:
+        fig, ax = plt.subplots(figsize = (20,12))
+    else:
+        fig, ax = plt.subplots(figsize = (20,10))          
+    if add:                                        #additional information to plot
         at = AnchoredText(add,
                           prop=dict(size=28), frameon=True,
                           loc='upper center')
@@ -142,16 +145,17 @@ def ols_fit(data,xlabel,ylabel,constant = None,extended = None):
         print(model.summary())     #by default no extended output printed within function
     return model,model.predict(X)
 
-def regress_val(model,split = None):
+def regress_val(model, split = None, r = None): 
     f_stat = '{:.2e}'.format(model.fvalue)
-    r_val = '{:.4}'.format(model.rsquared_adj)
+    r_squared = '{:.4}'.format(model.rsquared_adj)
+    r_val = '{:.4}'.format(np.sqrt(float(r_squared))) 
     aic = '{:.4}'.format(model.aic)
     bic = '{:.4}'.format(model.bic)
     cond_num = '{:.4}'.format(model.condition_number)
     if split:
-        return f_stat,r_val
+        return f_stat,r_val if r == None else f_stat,r_squared
     else:
-        vals = [f_stat,r_val,cond_num,aic,bic]
+        vals = [f_stat,r_squared,cond_num,aic,bic]
         return vals
 
 '''Save equation coefficients and update file'''
@@ -297,7 +301,6 @@ select_params = {'BRANCH_LEN': {'short':'TD','long':'Total Dendritic Length'},
                  'DIAMETER': {'short':'D','long':'Diameter'}}
 
 initial_params = {key:value for (key,value) in select_params.items() if key != 'NODE_ORDER'}
-#may have to make initial_params to not include Node_Order for plots as all same value
 
 '''Initial Plots and Parameter Analysis''' #save back in folder with fullpath os.cwd
 for i in comp_types:
@@ -322,6 +325,7 @@ for i in comp_types:
                 label = d1 + ' $r^2$ = ' + str(rsquared)
                 label_list.append(label)
             main_plot(d1_data, [param,'DIAMETER'], title, ax_titles = [plabel,'Diameter'], labels = label_list, where = 'upper right', save_as = saving + ' A')
+
 
 '''Extended Plots with Relation to Soma'''
 regress = {}                      #setup regression dictionary
@@ -375,62 +379,82 @@ testing_files = split_files[1]
 
 '''Choose which Features to Estimate Radius for Equations'''  #estimating radius as found in .swc morphologies
 test_params = {}      #'Apical' and 'Basal' are classification of compartment types within .swc morphologies
-test_params['Apical'] = {'Initial':['BRANCH_LEN','PATH_DIS'],'BP_Child':['PARENT_RAD','PATH_TO_END'],'Continuing':['PARENT_RAD']}
-test_params['Basal'] = {'Initial':['BRANCH_LEN','PATH_DIS'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
+test_params['Apical'] = {'Initial':['PARENT_RAD','PATH_TO_END'],'BP_Child':['PARENT_RAD','PATH_TO_END'],'Continuing':['PARENT_RAD']}
+test_params['Basal'] = {'Initial':['PARENT_RAD','BRANCH_LEN'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
+#test_params['Basal'] = {'Initial':['PARENT_RAD','NODE_ORDER'],'BP_Child':['PARENT_RAD','NODE_DEGREE'],'Continuing':['PARENT_RAD']}
+#test_params['Basal'] = {'Initial':['PARENT_RAD','PATH_TO_END'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
 
 '''Create Equations to Predict Radius'''
 pdict = {0:'Initial',1:'Continuing',2:'BP_Child'}   #original data (#'s) to dictionary organization (terms)
 cdict = {'3':'Basal','4':'Apical'}
-newrads = {test_file:{} for test_file in testing_files}
-models = {}; split_data = {}; merge_data = {}
+newrads = {fname:{} for fname in file_list}
+models = {}; train_data = {}; train_anal = {}; test_anal = {}; train_plot = {}; test_plot = {}#; merge_data = {}
 
 for i in comp_types: 
     models[i] = {'Initial':[],'Continuing':[],'BP_Child':[]} #saves each model for initial, continuing, and branch point children
-    merge_data[i] = {'Train':{'pred':[],'org':[]},'Test':{'pred':[],'org':[]}} #saves original and predicted radii for plots
+    train_anal[i] = {'pred':{fname:[] for fname in training_files}, 'org':{fname:[] for fname in training_files}}
+    test_anal[i] = {'pred':{fname:[] for fname in testing_files}, 'org':{fname:[] for fname in testing_files}}
+    train_plot[i] = {'pred':[],'org':[]}; test_plot[i] = {'pred':[],'org':[]}
     for connect in pdict.values():  
-        split_data = {'Train':{p:[] for p in header.keys()},'Test':{p:[] for p in header.keys()}} #will temporarily hold data values in model formation
+        train_data = {p:[] for p in header.keys()}#,'Test':{p:[] for p in header.keys()}} #will temporarily hold data values in model formation
         for num,fname in enumerate(comb_data[connect][i]['FNAME']): 
             for param in header.keys():
                 if fname in training_files:       #split data into training and testing sets to validate equations
-                    split_data['Train'][param].append(comb_data[connect][i][param][num])
-                elif fname in testing_files:
-                    split_data['Test'][param].append(comb_data[connect][i][param][num]) #may choose to remove split_data[test] since validating equations outside loops
+                    train_data[param].append(comb_data[connect][i][param][num])
         
-        model,predictions = ols_fit(split_data['Train'],test_params[i][connect],'RADIUS',extended = True)
-        merge_data[i]['Train']['pred'].extend(predictions)
-        merge_data[i]['Train']['org'].extend(split_data['Train']['RADIUS']) 
+        model,predictions = ols_fit(train_data,test_params[i][connect],'RADIUS',extended = True)
         models[i][connect] = {feature:model.params[num] for num,feature in enumerate(test_params[i][connect])}
 
 cd = complete_dict
 for num,(comp,parent,fname,ctype,pcon) in enumerate(zip(cd['CHILD'],cd['PARENT'],cd['FNAME'],cd['TYPE'],cd['PAR_CONNECT'])):
-    if fname in testing_files:                                #find new radius value for testing files
-    #if fname == '960924b.CNG_extract':
-        ctype = cdict[ctype]; pcon = pdict[pcon]
-        newrad = 0
-        for feature in test_params[ctype][pcon]:        
-            '''new predictions with updating parent radius'''
-            if feature == 'PARENT_RAD':                       #start with initial comps, with saved parent radius as soma val
-                if pcon == 'Initial':                   
-                    newrad = newrad + models[ctype][pcon][feature] * complete_dict['PARENT_RAD'][num]
-                else:                                         #if parent radius of any other comp, use updated radius
-                    newrad = newrad + models[ctype][pcon][feature] * newrads[fname][parent]
-                    
-            else:                                             #if other feature value, find and update radius
-                newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
-            '''old predictions with non-updating parent radius'''
-            #newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
-            
-        newrads[fname][comp] = newrad                   
-        merge_data[ctype]['Test']['pred'].append(newrad)    
-        merge_data[ctype]['Test']['org'].append(complete_dict['RADIUS'][num])
-        
-for i in comp_types:
-    model,_ = ols_fit(merge_data[i]['Test'],'pred','org')                                    
-    f_stat,r_val = regress_val(model,split = True)
-    f_label = 'F-Statistic : ' + f_stat
-    r_label = ' Average R : ' + r_val
-    additions = f_label +  r_label
-    title = i + ' Dendrites'
-    saving = i + ' Predicted Radii'
-    main_plot([merge_data[i]['Train'],merge_data[i]['Test']], ['org','pred'], title, ax_titles = ['Original Radius','Predicted Radius'], add = additions, labels = ['Training Set','Testing Set'], where = 'lower right', save_as=saving)
+    ctype = cdict[ctype]; pcon = pdict[pcon]
+    newrad = 0
+    for feature in test_params[ctype][pcon]:        
+        '''new predictions with updating parent radius'''
+        if feature == 'PARENT_RAD':                       #start with initial comps, with saved parent radius as soma val
+            if pcon == 'Initial':                   
+                newrad = newrad + models[ctype][pcon][feature] * complete_dict['PARENT_RAD'][num]
+            else:                                         #if parent radius of any other comp, use updated radius
+                newrad = newrad + models[ctype][pcon][feature] * newrads[fname][parent]
+                #newrad = newrad + newrads[fname][parent]
 
+        else:                                             #if other feature value, find and update radius
+            newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
+        '''old predictions with non-updating parent radius'''
+        #newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
+
+    newrads[fname][comp] = newrad   
+    if fname in testing_files:  #save new predicted radius and original radius for R analysis and later plots
+        #[x.append(y) for x,y in zip([test_anal[ctype]['pred'][fname],test_plot[ctype]['pred']])]
+        #[x.append(complete_dict['RADIUS'][num]) for x in zip([test_anal[ctype]['org'][fname],test_plot[ctype]['org']])]
+        test_anal[ctype]['pred'][fname].append(newrad)
+        test_anal[ctype]['org'][fname].append(complete_dict['RADIUS'][num])
+        test_plot[ctype]['pred'].append(newrad)
+        test_plot[ctype]['org'].append(complete_dict['RADIUS'][num])
+    elif fname in training_files:
+        #[x.append(newrad) for x in zip([train_anal[ctype]['pred'][fname],train_plot[ctype]['pred']])]
+        #[x.append(complete_dict['RADIUS'][num]) for x in zip([train_anal[ctype]['org'][fname],train_plot[ctype]['org']])]
+        train_anal[ctype]['pred'][fname].append(newrad)
+        train_anal[ctype]['org'][fname].append(complete_dict['RADIUS'][num])
+        train_plot[ctype]['pred'].append(newrad)
+        train_plot[ctype]['org'].append(complete_dict['RADIUS'][num])
+
+for i in comp_types:
+    test_r = []; train_r = []
+    for fname in file_list:
+        if fname in testing_files:          #calculate rsquared values for each file in training and testing sets
+            r_val,_ = pearsonr(test_anal[i]['pred'][fname],test_anal[i]['org'][fname])
+            test_r.append(r_val**2)
+        elif fname in training_files:
+            r_val,_ = pearsonr(train_anal[i]['pred'][fname],train_anal[i]['org'][fname])
+            train_r.append(r_val**2)
+    print(i, ' average',' stdev')
+    print('Train',np.average(train_r),np.std(train_r))
+    print('Test',np.average(test_r),np.std(test_r))  #calculate averaged rsquared for training, testing, and all files
+    train_label = 'Average $R^2$ = ' + '{:.4}'.format(np.average(train_r)) + ' StDev = ' '{:.4}'.format(np.std(train_r))
+    test_label = 'Average $R^2$ = ' + '{:.4}'.format(np.average(test_r)) + ' StDev = ' '{:.4}'.format(np.std(test_r))
+    ave_r = '{:.4}'.format(np.average([np.average(train_r),np.average(test_r)]))
+    title = i + ' Dendrites'
+    additions = 'Average $R^2$ = ' + ave_r
+    saving = i + ' Predicted Radii'                  #plot predicted vs. original radii
+    main_plot([train_plot[i],test_plot[i]], ['org','pred'], title, ax_titles = ['Original Radius','Predicted Radius'], add = additions, labels = ['Training Set: ' + train_label,'Testing Set: ' + test_label], where = 'lower right', save_as=saving) 
