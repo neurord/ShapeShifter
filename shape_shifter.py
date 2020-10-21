@@ -127,13 +127,19 @@ class morph:
                 if soma_nodes == 1:
                         print('***1-pt soma detected***')
                 if soma_nodes == 3:
-                        print('***3-pt soma detected***')
+                        print('***3-pt soma detected***') #default 1_1 at coordinates 0,0,0 --> merge to single 1-pt soma 
                         comp1 = self.linelist[1]; comp2 = self.linelist[2]
                         check_if_parent = []
                         for num,comp in enumerate(self.linelist):   #remove extra soma nodes which do not connect to others (only visuallizes width)
-                                check_if_parent.append('true')
+                                if comp[PARENT] == comp1[CHILD] or comp[PARENT] == comp2[CHILD]:
+                                        check_if_parent.append('true')
+                        print(len(check_if_parent))
                         if len(check_if_parent) == 0 and soma_start[DIA] == comp1[DIA] == comp2[DIA] and soma_start[CHILD] == comp1[PARENT] == comp2[PARENT]:
-                                self_linelist = [line for line in self.linelist if line != comp1 and line != comp2]
+                                #print('TRUE')
+                                for val in range(X,DIA):
+                                        soma_start[val] = comp1[val] - comp2[val]
+                                del self.linelist[2]
+                                del self.linelist[1]
                         else:
                                 ('***Multiple soma node connections; possibly check morphology file***') #usually extra 3-pt soma nodes exact diameter equal to soma
                 elif soma_nodes == 2 or soma_nodes > 3:
