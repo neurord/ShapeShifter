@@ -2,7 +2,7 @@
    <Condenses .p files of neuron traces to maintain specific lambda (ac or dc) and removes 0 length compartments.>
     Copyright (C) <2016>  <Saivardhan Mada>
     Copyright (C) <2017>  <Avrama Blackwell>
-    Copyright (C) <2019>  <Jonathan Reed>
+    Copyright (C) <2020>  <Jonathan Reed>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -33,13 +33,12 @@
 #Ideal Usage Scenario:
 #neuromorpho.org morphology files often inaccurate compartment (node) diameters
 
-#convert .swc file --> .p file using convert_swc_pfile.py
-# Input:   python convert_swc_pfile.py --file filename.swc
-# Output:  filenameconvert.p
-
 #run shape_shifter.py through type radii for more accurate diameters
-# Input:   python shape_shifter.py --file filenameconvert.p --type radii
-# Ouput:   filenameconvertout.p
+#can currently accept either .swc or .p morphology files
+#requires model.txt from morph_feature_analysis.py to load in MLR model
+
+# Input:   python shape_shifter.py --file morph_file.swc --type radii --model model.txt
+# Ouput:   morph_file_org.p
  
 #run shape_shifter.py again through type condense to combine similar compartments together for future simulation
 #can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
@@ -51,7 +50,6 @@
 #  - validate voltage response with simulations 
 # read (and use) rm, cm and ri from p file
 # write rm, cm and ri to p file if (a) not already specified and (b) given as input parameters
-# test for whether absolute or relative coordinates.  If absolute - print error message (until length calculation can be updated)
 
 #George Mason University
 #Saivardhan Mada
@@ -304,36 +302,14 @@ def calc_enddis(dis_to_end, par_comp, line, ending = 0):
 def condenser(m, type1, max_len, lambda_factor, rad_diff):
         #num_comps=0
         ######## type = '0' removes 0 length compartments, this is done in the class, so just write file
+        filename,_ = os.path.splitext(h.file)
         if(type1 == "0"):
-                if save_as == 'p_identical':
-                        id_dia = 1.0
-                        m.outfile.write('*relative' + '\n')
-
-                        #extra_comps = len(m.linelist) - len(pred_rad)
-                        for num,line in enumerate(m.linelist):
-                                #extra_comps = extra_comps - 1
-                                #if extra_comps >= 0:
-                                        #print(line)
-                                #if num < extra_comps:
-                                if line[DIA] == m.linelist[0][DIA]:
-                                        write_file(m.outfile, m.linelist[num])
-                                else:#elif num >= extra_comps: #< 0:
-                                        #new_num = num - extra_comps
-                                        line[DIA] = id_dia
-                                        write_file(m.outfile, m.linelist[num])
-                                        
-                        os.rename(filename + '.swc',filename.split('.swc')[0] + 'zdia' + str(id_dia) + '.p')
-                        print('Saving .p as : ', filename.split('.swc')[0] + 'zdia' + str(id_dia) + '.p')
-
-                if save_as == 'p':
-                        m.outfile.write('*relative' + '\n')
-                        for line in m.linelist:
-                                write_file(m.outfile, line)
-                        os.rename(filename + '.swc',filename.split('.swc')[0] + '.p')
-                        print('Saving .p as : ', filename.split('.swc')[0] + '.p')
-                        
-
-                #print('Removed Zero point Compartments : Created ' + m.filename)
+                removed = open(filename + '_removed.p','w')
+                removed.write('*relative' + '\n')
+                for line in m.linelist:
+                        write_file(removed,line)
+                removed.close()
+                print('Removed Zero point Compartments : Created ' + filename + '_removed.p')
 
         ####### type = "expand" takes long compartments and subdivides into multiple "segments"  --> in progress non-working version
         if (type1 == "expand"):
@@ -375,6 +351,8 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 #cvapp converts .swc to .p file format AND from absolute to relative coordinates
                 #print(m.linelist)
                 #print('Original Compartments : ' + len(m.linelist[0]))
+                condensed = open(filename + '_condensed.p','w')
+                condensed.write('*relative' + '\n')
                 Ltot = 0; surface_tot = 0; condense = [] #list to hold compartments to be condensed
                 for num,line in enumerate(m.linelist):
                         comp1 = line
@@ -411,13 +389,13 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 Ltot=Ltot+len_comp2
                                 surface_tot=surface_tot+(math.pi * comp2[DIA] * length2)    
                         else:
-                                condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,comp2,m.outfile)
+                                condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,comp2,condensed)
                                 
                 #temp_name = m.filename.split('.swc')[0] + '_condense.swc'
-                print('Created : ' + m.filename  )#+ ' with ' + len(m.linelist) + ' Condensed Compartments')
+                #print('Created : ' + m.filename  )#+ ' with ' + len(m.linelist) + ' Condensed Compartments')
                 #print(len(m.outfile))
                 #print ("finished,", len(m.linelist), "output compartments")
-        
+                print('Condensed Compartments : Created ' + filename + '_condensed.p')
         ######## type = radii changes radius with distance dependent diameter equation from Lindroos et al 2018 'Basal Ganglia Neuromodulation'
         if (type1 =="radii"):
                 #read in model, as morph file already read in as m.linelist
@@ -436,7 +414,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                         elif len(line) == 2: 
                                 models[comp][connect][line[0]] = float(line[1])
 
-                new_file,_ = os.path.splitext(h.file)
+                
                 feature_file = new_file + '_extract.txt'
                 features = create_dict(feature_file)
                 for feature in features.keys():                    #remove trailing '\n' from final feature name
@@ -471,11 +449,11 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 newrads[line[CHILD]] = newrad
                                 newrads_i[line[CHILD]] = newrad_i
                 
-                org_file = open(new_file + '_org.p','w')
-                pred_file = open(new_file + '_pred.p','w')
-                pred_i_file = open(new_file + '_pred_i.p','w')
-                zdia1_file = open(new_file + '_zdia1.p','w')
-                zdia2_file = open(new_file + '_zdia2.p','w')
+                org_file = open(filename + '_org.p','w')
+                pred_file = open(filename + '_pred.p','w')
+                pred_i_file = open(filename + '_pred_i.p','w')
+                zdia1_file = open(filename + '_zdia1.p','w')
+                zdia2_file = open(filename + '_zdia2.p','w')
                 
                 for fname in [org_file,pred_file,pred_i_file,zdia1_file,zdia2_file]:
                         fname.write('*relative' + '\n')
