@@ -395,12 +395,12 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 #print('Created : ' + m.filename  )#+ ' with ' + len(m.linelist) + ' Condensed Compartments')
                 #print(len(m.outfile))
                 #print ("finished,", len(m.linelist), "output compartments")
+                condensed.close()
                 print('Condensed Compartments : Created ' + filename + '_condensed.p')
-        ######## type = radii changes radius with distance dependent diameter equation from Lindroos et al 2018 'Basal Ganglia Neuromodulation'
+
         if (type1 =="radii"):
-                #read in model, as morph file already read in as m.linelist
-                read_model = open(h.model,'r').readlines()
-                models = {}
+                read_model = open(h.model,'r').readlines() #read model file and organize by node-type 
+                models = {}                                #save as dictionary for feature name (key) and coefficient (value)
                 for line in read_model:
                         line = line.split()
                         if line[0] == 'Apical' or line[0] == 'Basal':
@@ -415,7 +415,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 models[comp][connect][line[0]] = float(line[1])
 
                 
-                feature_file = new_file + '_extract.txt'
+                feature_file = filename + '_extract.txt'
                 features = create_dict(feature_file)
                 for feature in features.keys():                    #remove trailing '\n' from final feature name
                         if '\n' in feature:
@@ -424,7 +424,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 
                 soma_count = 0
                 newrads = {}; newrads_i = {}
-                pdict = {0:'Initial',1:'BP_Child',2:'Continuing'}   #original data (#'s) to dictionary organization (terms)
+                pdict = {0:'Initial',1:'BP_Child',2:'Continuing'}  #original data (#'s) to dictionary organization (terms)
                 cdict = {3:'Basal', 4:'Apical'}
                 
                 for num,line in enumerate(m.linelist):
@@ -437,7 +437,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 for feature in models[ctype][pcon]:
                                         if feature == 'PARENT_DIA':              
                                                 if pcon == 'Initial':
-                                                        newrad = newrad + models[ctype][pcon][feature] * (features['RADIUS'][new_num]*2)
+                                                        newrad = newrad + models[ctype][pcon][feature] * (features['PARENT_RAD'][new_num]*2)
                                                         newrad_i = newrad_i + (features['RADIUS'][new_num]*2)
                                                 else:
                                                         newrad = newrad + models[ctype][pcon][feature] * newrads[line[PARENT]]
