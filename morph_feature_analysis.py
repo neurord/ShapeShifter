@@ -1,5 +1,5 @@
 '''<Extracts data values from .swc files>
-    Copyright (C) <2020>  <Jonathan Reed>
+    Copyright (C) <2021>  <Jonathan Reed>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -14,13 +14,15 @@
 
 #####statsmodels requires python3#####
 
-#Usage:  python3 -i morph_feature_analysis.py --path /path/to/folder/with/archives 
-#        where path is name of path to folder containing archive folder(s) with .CNG_extract.txt files
+#Usage:  python3 -i morph_feature_analysis.py --path /path/to/folder/with/archives
+#        uses visual and statistical tools to analyze features predictive of node diameter
+#        will output feature plots as .png and model equations as model.txt
+#        where path is name of path to folder containing archive folder(s) with original .swc morphologies and .CNG_extract.txt files
 #        .CNG_extract.txt files created from morph_feature_extract.py
 
 #George Mason University
 #Jonathan Reed
-#October 9, 2020
+#March 14, 2021
 
 import numpy as np
 from scipy import optimize
@@ -28,7 +30,6 @@ from scipy.stats import pearsonr
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import AnchoredText
-from itertools import chain
 import statsmodels.api as sm
 import random
 import seaborn as sns
@@ -38,79 +39,74 @@ import glob
 import re
 
 '''Save plot as png'''            
-def save_png(png, title):               #default to save plots instead of plot to window
-    png.savefig(title)
+def save_png(png, title):                       #default to save plots instead of plot to window
+    png.savefig(title, bbox_inches = 'tight')   #remove empty space around plots
     print('File Created : ' + str(title))
     png.close()
     
 '''Main Plot Function for Basic, Fit or 3d Color Plots'''
-def main_plot(data, var, title, ax_titles = None, labels = None, save_as = None, plot_type = None, fit_line = None, add = None, where = None, size = None):
-    plt.rc('font', size = 28) #default plot and font sizes
-    if size:
-        fig, ax = plt.subplots(figsize = (20,12))
-    else:
-        fig, ax = plt.subplots(figsize = (20,10))          
-    if add:                                        #additional information to plot
-        at = AnchoredText(add,
-                          prop=dict(size=28), frameon=True,
-                          loc='upper center')
+def main_plot(data, var, title = None, ax_titles = None, labels = None, save_as = None, plot_type = None, fit_line = None, add = None, where = None, marker_size = None):
+    #plt.rc('font', size = 38)                       
+    plt.rc('font', size = 34)                    #default plot and font sizes
+    fig, ax = plt.subplots(figsize = (20,10))
+    #fig, ax = plt.subplots(figsize = (10,10))
+    if add:                                      #additional information to plot
+        at = AnchoredText(add, prop=dict(size=28), frameon=True, loc='upper center')
         at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2") 
         ax.add_artist(at)
        
-    if plot_type == 'Color3d':                     #plot 3 variables(x,y,z) with variable 'z' using colorbar
+    if plot_type == 'Color3d':                    #plot 3 variables(x,y,z) with variable 'z' using colorbar
         scat = ax.scatter(data[var[0]], data[var[1]], c=data[var[2]], s=100, marker='o', label = labels)
         fig.colorbar(scat)
         
-    elif plot_type == 'Fit':                       #plot initial fitted equation to data values
+    elif plot_type == 'Fit':                      #plot initial fitted equation to data values
         plt.plot(data[var[0]], data[var[1]], 'o')
         plt.plot(fit_line[0], fit_line[1], color = 'orange', label = fit_line[2]) 
     
     else:
         for num in range(len(data)):
-            if labels:
+            if labels:                            #can modify markersize or alpha (transparency) of plotted points
                 plt.plot(data[num][var[0]], data[num][var[1]], 'o', label = labels[num], markersize = 15)
             else:
                 plt.plot(data[num][var[0]], data[num][var[1]], 'o', markersize = 15)
-            
+
     if labels or fit_line:
         plt.legend(loc = where) if where else plt.legend()
     plt.xlabel(ax_titles[0]) if ax_titles else plt.xlabel(var[0])
     plt.ylabel(ax_titles[1]) if ax_titles else plt.ylabel(var[1])
-    plt.title(title)                 #save_as can be separate from plot title
+    if title:
+        plt.title(title)                           #will require 'title' if nothing passed in 'save_as'
     save_png(plt,save_as + '.png') if save_as else save_png(plt,title + '.png')
 
 '''Plot Parameter Correlation to Diameter with Pearson's R'''
 def corr(data,selection,title,save_as = None):
-    dframe = pd.DataFrame(data,columns = selection.keys())  #dataframe reorders alphabetically columns by default 
-    dcorr = dframe.corr()                                   #set to order columns as in select_params - passed as 'selection'
+    dframe = pd.DataFrame(data,columns = selection.keys())  #dataframe reorders alphabetically feature columns by default 
+    dcorr = dframe.corr()                                   #set feature order by select_params --> passed as 'selection'
     for i in dcorr:
-        dcorr[i] = dcorr[i]**2                              #test to see if we can match r2 values from plots in correlation matrices
+        dcorr[i] = dcorr[i]**2                              #dataframe correlation as R2
+    plt.rc('font', size = 30)            
     fig,ax = plt.subplots(figsize = (20,15))
-    sns.set(font_scale = 2.8)
-    plt.rc('font', size = 26)
-    rsquared = '$r^2$'
+    #sns.set(font_scale = 4)
+    rsquared = '$R^2$'                                      #can modify heatmap for either (+/-) R or (+) R2 for Feature Correlations
     #ax = sns.heatmap(dcorr,vmin = -1,vmax = 1, center = 0,cmap = sns.diverging_palette(20, 220, n=256),square = True,annot = True,cbar_kws={'shrink':1,'label':rsquared})#"Pearsons R"}
-    ax = sns.heatmap(dcorr,vmin = 0,vmax = 1, center = 0.5,cmap = 'Blues',square = True,annot = True,cbar_kws={'shrink':1,'label':rsquared})#"Pearsons R"})
-    ax.set_yticklabels([sub['short'] for sub in selection.values()],rotation = 0,fontsize = 30)
-    ax.set_xticklabels([sub['short'] for sub in selection.values()],rotation = 0,horizontalalignment = 'right',fontsize = 30,ha = 'center')
-    cbar = ax.collections[0].colorbar
-    cbar.ax.tick_params(labelsize = 26)
-    plt.title(title)   
-    #save_png(plt, title)
+    ax = sns.heatmap(dcorr,vmin = 0,vmax = 1, center = 0.5,cmap = 'Blues',square = True,annot = True,cbar_kws={'label':rsquared})
+    ax.set_yticklabels([sub['short'] for sub in selection.values()],rotation = 0)
+    ax.set_xticklabels([sub['short'] for sub in selection.values()],rotation = 0,horizontalalignment = 'right',ha = 'center')
+    cbar = ax.collections[0].colorbar                        #selection will contain short and long versions of feature names
+    plt.title(title, loc = 'left')   
     save_png(plt,save_as + '.png') if save_as else save_png(plt,title + '.png')
     
 '''Function Definitions for Fit Equations'''
-#fit selected variables to equations
-#utilized with initial_fit function
+#fit selected variables to equations; can input more functions for other feature relationships (to diameter)
 def func0(x,m,b):                                     
     return m*x+b
 
 '''Fit Data to Selected Equation and Obtain Residuals'''
-#First method to plot predicted values and find residuals
-def initial_fit(data, var, func):
-    x = var[0]
-    y = var[1]                             #assumes only fit to single y-variable
-    popt, pcov = optimize.curve_fit(func[0],data[x],data[y])    #fits equation to choosen function if possible
+#ALTERNATIVE Method to plot predicted values and find residuals
+def initial_fit(data, var, func):          #data as dictionary with feature data and var is list of selected features
+    x = var[0]                             #assumes only fit to single x- and y- variable
+    y = var[1]                             #will require modification if multiple 'x' or transformed 'x' features
+    popt, pcov = optimize.curve_fit(func[0],data[x],data[y])    #fits equation to selected function if possible
     print('This is fit estimate for : ', func[1])
     print('popt',popt)
     print('pcov',pcov)
@@ -120,12 +116,12 @@ def initial_fit(data, var, func):
     for i in data[x]:
         temp_max = round(max(data[i])) 
         temp_min = round(min(data[i]))
-        x_range = np.arange(temp_min, temp_max + 1, 1)        #plot original feature values to line equation
+        x_range = np.arange(temp_min, temp_max + 1, 1)              #plot original feature values to line equation
         main_plot(data, [i, y], 'Fitted Equation ' + i + ' to ' + y, fit_line = [x_range, func[0](x_range, *popt), func[1]])
         res_label = str(i) + '_Res'  
         predictions = [func[0](xval,*popt) for xval in data[i]]     #plot original feature values to predicted feature values
         main_plot(data, [y, predictions], 'Predicted vs. Actual Plot : ' + i)
-                                                              #plot original feature values to residuals
+                                                                    #plot original feature values to residuals
         data[res_label] = [yval - est for yval,est in zip(data[y],predictions)]
         print('Residual Plot : ', i, ' to ', y)
         main_plot(data, [y, res_label], 'Residual Plot : ' + i)
@@ -133,7 +129,7 @@ def initial_fit(data, var, func):
     return data, [popt,pcov]
 
 '''OLS Regression to fit Variables'''
-#Second PREFERRED Method to predict variable values
+#PREFERRED Method to predict feature variable values
 def ols_fit(data,xlabel,ylabel,constant = None,extended = None):
     temp_df = pd.DataFrame(data)   #xlabel can be multiple names of parameters to fit towards Diameter
     X = temp_df[xlabel]
@@ -145,6 +141,7 @@ def ols_fit(data,xlabel,ylabel,constant = None,extended = None):
         print(model.summary())     #by default no extended output printed within function
     return model,model.predict(X)
 
+'''Equation Values to compare OLS models'''
 def regress_val(model, split = None, r = None): 
     f_stat = '{:.2e}'.format(model.fvalue)
     r_squared = '{:.4}'.format(model.rsquared_adj)
@@ -157,13 +154,6 @@ def regress_val(model, split = None, r = None):
     else:
         vals = [f_stat,r_squared,cond_num,aic,bic]
         return vals
-
-'''Save equation coefficients and update file'''
-def add_coeff(temp_list, temp_dict, comp_type):
-    for i in temp_dict:
-        to_add = [comp_type + '_' + i, temp_dict[i]]   #adds feature name and relation to soma designation
-        temp_list.append(to_add)
-    return temp_list
 
 '''Flatten nested lists of values into single list of values'''
 def flatten(container):    
@@ -179,17 +169,10 @@ def split_seq(seq, size):               #splits file_list into equal amounts for
         newseq = []
         splitsize = 1.0/size*len(seq)
         for i in range(size):
-                newseq.append(seq[int(round(i*splitsize)):int(round((i+1)*splitsize))])
+            newseq.append(seq[int(round(i*splitsize)):int(round((i+1)*splitsize))])
         return newseq
+    
 
-'''Save data to file'''    
-def save_file(coeff,filename):
-    with open(filename + '.txt','a') as f:
-        for i in coeff:
-            f.write(str(i) + ' ')
-        f.write('\n')
-
-        
 '''Start of Working Code'''
 parser = argparse.ArgumentParser()
 parser.add_argument("--path", type = str)   
@@ -229,10 +212,10 @@ for d1 in dirs:                                      #can accept individual arch
                                 header['CHILD'] = num
                             else:
                                 header[val] = num
-                            
+
                     elif line[0] != '*' and line[0] != ' ' and line[0] != '/n':  #organizes remaining parameter data values    
                         temp_line = line.split()
-                        for point, val in enumerate(temp_line):                  #Child, Type, Parent are DESCRETE values defined by .swc
+                        for point, val in enumerate(temp_line):                  #Child, Type, Parent are DESCRETE values defined by .swc morphology
                             if point != header['CHILD'] and point != header['TYPE'] and point != header['PARENT']:
                                 temp_line[point] = float(temp_line[point])
                         temp_line.extend([temp_line[header['RADIUS']]*2,temp_line[header['PARENT_RAD']]*2,temp_name.group(1),d1]) 
@@ -245,12 +228,12 @@ for d1 in dirs:                                      #can accept individual arch
             header[i] = len(header)
     
     for line in data_list:                                  #'3' - basal and '4' - apical .swc compartment type
-        if line[header['TYPE']] == '4':                     #currently does not keep axon data
+        if line[header['TYPE']] == '4':                     #currently does not keep axon data if present in .swc morphology
             apical_list.append(line)                        
         elif line[header['TYPE']] == '3':
             basal_list.append(line)                        
 
-    if not 'Basal' in archive_dict.keys():                  #assumes basal compartments present in all .swc iles
+    if not 'Basal' in archive_dict.keys():                  #assumes basal compartment 'designation' in all .swc iles
         archive_dict['Basal'] = {}                          #archive_dict will organize data by archive and by compartment type
     archive_dict['Basal'][d1] = {}                          #individual data values will be stored in parameter lists 
     for param,vals in zip(header.keys(),list(zip(*basal_list))):
@@ -278,7 +261,7 @@ for connect in comp_list:
                 complete_dict[param] = []
             for d1 in dirs:
                 if connect == comp_list[0]:
-                    complete_dict[param].extend(archive_dict[i][d1][param])
+                    complete_dict[param].extend(archive_dict[i][d1][param])       #no longer keeps order as files were read
                 if len(sep_data[connect][i].keys()) != len(dirs):                 #create new sep_data dictionaries if not present
                     sep_data[connect][i][d1] = {}
                 sep_data[connect][i][d1][param] = []         
@@ -292,6 +275,7 @@ for connect in comp_list:
                                 comb_data[ctype][i][param].append(archive_dict[i][d1][param][num])
 
 '''Select parameters to analyze with Compartment Diameter'''
+#if additional features to plot, add plot labels below
 select_params = {'BRANCH_LEN': {'short':'TD','long':'Total Dendritic Length'},
                  'NODE_DEGREE': {'short':'TB','long':'Terminal Branch Order'},
                  'NODE_ORDER': {'short':'IB','long':'Initial Branch Order'},
@@ -302,13 +286,14 @@ select_params = {'BRANCH_LEN': {'short':'TD','long':'Total Dendritic Length'},
 
 initial_params = {key:value for (key,value) in select_params.items() if key != 'NODE_ORDER'}
 
-'''Initial Plots and Parameter Analysis''' #save back in folder with fullpath os.cwd
+'''Initial Plots and Parameter Analysis''' 
 for i in comp_types:
     for param in select_params:
         if param != 'DIAMETER':
             d1_data = []; label_list = []
             plabel = select_params[param]['long']
-            title = i + ' ' + plabel + ' to Diameter'
+            #title = i + ' ' + plabel + ' to Diameter'
+            title = i + ' Dendrites'
             saving = 'All ' + i + ' ' + plabel + ' to Diameter'
 
             '''Plot Parameters to Diameter'''
@@ -322,28 +307,29 @@ for i in comp_types:
                 d1_data.append(sep_data['All'][i][d1])
                 temp,_ = pearsonr(sep_data['All'][i][d1][param],sep_data['All'][i][d1]['DIAMETER'])
                 rsquared = round(temp**2,4)
-                label = d1 + ' $r^2$ = ' + str(rsquared)
+                label = d1 + ' $R^2$ = ' + str(rsquared)
                 label_list.append(label)
             main_plot(d1_data, [param,'DIAMETER'], title, ax_titles = [plabel,'Diameter'], labels = label_list, where = 'upper right', save_as = saving + ' A')
 
-
-'''Extended Plots with Relation to Soma'''
+'''Plot Feature Correlations'''
 regress = {}                      #setup regression dictionary
 for i in comp_types:
     regress[i] = {}
+    
+    #Plot Correlation between 2 Features
     for connect in comp_list:     #setup correlation data for each compartment type
         param_comb = []; regress[i][connect] = []; select_data = {}
         selection = initial_params if connect == 'Initial' else select_params
         for p1 in selection:
             
-            '''Multiple Regression for Diameter''' 
+            '''Multiple Regression for Diameter'''
             if p1 != 'DIAMETER':  #runs statsmodels OLS (multiple) regression for single and paired parameters
-                model,predictions = ols_fit(comb_data[connect][i],p1,'DIAMETER')
-                vals = regress_val(model)
+                model,predictions = ols_fit(comb_data[connect][i],p1,'DIAMETER') #be aware that single variable will still fit model
+                vals = regress_val(model)                                        
                 temp = [p1]
                 temp.extend(vals)
                 regress[i][connect].append(temp)
-                for p2 in selection:          #checks for repeat combinations of parameters for easier analysis
+                for p2 in selection:          #checks for duplicates to print only unique feature (2) combinations
                     if p2 != 'DIAMETER' and p2 != p1 and str(p2 + ' + ' + p1) not in param_comb:
                         param_comb.append(str(p1 + ' + ' + p2))
                         model,predictions = ols_fit(comb_data[connect][i],[p1,p2],'DIAMETER')
@@ -351,14 +337,12 @@ for i in comp_types:
                         temp = [str(p1 + ' + ' + p2)]
                         temp.extend(vals)
                         regress[i][connect].append(temp)
-                        
-            '''Plot Correlations to Diameter'''
+                 
             select_data[p1] = comb_data[connect][i][p1]
-        
-        title = 'Correlation Dendrites'
-        saving = i + ' ' + connect + ' Feature Correlation'
-        corr(select_data, selection, 'Striatal Dendrites', save_as = saving)
 
+        title = i + ' Dendrites'
+        saving = i + ' ' + connect + ' Feature Correlation'
+        corr(select_data, selection, title, save_as = saving)
 
 #print regression data and sort by r-squared
 for i in regress:
@@ -377,84 +361,126 @@ split_files = split_seq(file_copies,2)
 training_files = split_files[0]
 testing_files = split_files[1]
 
+print('train files',len(training_files))
+print('test files',len(testing_files))
+
 '''Choose which Features to Estimate Radius for Equations'''  #estimating radius as found in .swc morphologies
 test_params = {}      #'Apical' and 'Basal' are classification of compartment types within .swc morphologies
-test_params['Apical'] = {'Initial':['PARENT_RAD','PATH_TO_END'],'BP_Child':['PARENT_RAD','PATH_TO_END'],'Continuing':['PARENT_RAD']}
-test_params['Basal'] = {'Initial':['PARENT_RAD','BRANCH_LEN'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
-#test_params['Basal'] = {'Initial':['PARENT_RAD','NODE_ORDER'],'BP_Child':['PARENT_RAD','NODE_DEGREE'],'Continuing':['PARENT_RAD']}
-#test_params['Basal'] = {'Initial':['PARENT_RAD','PATH_TO_END'],'BP_Child':['PARENT_RAD','PATH_DIS'],'Continuing':['PARENT_RAD']}
+test_params['Apical'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_TO_END'],'Continuing':['PARENT_DIA']}
+#test_params['Basal'] = {'Initial':['PARENT_DIA','BRANCH_LEN'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA']}
+test_params['Basal'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA','NODE_ORDER']}
+#test_params['Basal'] = {'Initial':['PARENT_DIA','NODE_DEGREE'],'BP_Child':['PARENT_DIA','NODE_ORDER'],'Continuing':['PARENT_DIA']}
 
-'''Create Equations to Predict Radius'''
-pdict = {0:'Initial',1:'Continuing',2:'BP_Child'}   #original data (#'s) to dictionary organization (terms)
+'''Create Equations (OLS Model) and Save Models to File'''
+pdict = {0:'Initial',1:'BP_Child',2:'Continuing'}   #original data (#'s) to dictionary organization (terms)
 cdict = {'3':'Basal','4':'Apical'}
-newrads = {fname:{} for fname in file_list}
-models = {}; train_data = {}; train_anal = {}; test_anal = {}; train_plot = {}; test_plot = {}#; merge_data = {}
+newrads = {fname:{} for fname in file_list}; newrads_i = {fname:{} for fname in file_list}
 
-for i in comp_types: 
-    models[i] = {'Initial':[],'Continuing':[],'BP_Child':[]} #saves each model for initial, continuing, and branch point children
-    train_anal[i] = {'pred':{fname:[] for fname in training_files}, 'org':{fname:[] for fname in training_files}}
-    test_anal[i] = {'pred':{fname:[] for fname in testing_files}, 'org':{fname:[] for fname in testing_files}}
-    train_plot[i] = {'pred':[],'org':[]}; test_plot[i] = {'pred':[],'org':[]}
+model_file = open('model.txt','w')
+models = {}; model_data = {}
+
+for i in comp_types:
+    models[i] = {'Initial':[],'Continuing':[],'BP_Child':[]} #saves model for initial, continuing, and branch point children
+    model_data[i] = {ts:{'fname':{},'node_type':{nd:{'pred':[],'org':[]} for nd in pdict.values()}} for ts in ['Train','Test','Test_i']}
+
+    #separate training and testing files in dictionary by file name
+    #testing set split into test set including original diameters (Test_i)
+    for ts in ['Train','Test','Test_i']:
+        model_data[i][ts]['fname'] = {fn:{'pred':[],'org':[]} for fn in training_files} if ts == 'Train' else {fn:{'pred':[],'org':[]} for fn in testing_files}
+        
     for connect in pdict.values():  
-        train_data = {p:[] for p in header.keys()}#,'Test':{p:[] for p in header.keys()}} #will temporarily hold data values in model formation
+        train_data = {p:[] for p in header.keys()} #temporarily hold feature values
         for num,fname in enumerate(comb_data[connect][i]['FNAME']): 
             for param in header.keys():
-                if fname in training_files:       #split data into training and testing sets to validate equations
+                if fname in training_files:        #split data into training and testing sets to validate equations
                     train_data[param].append(comb_data[connect][i][param][num])
         
-        model,predictions = ols_fit(train_data,test_params[i][connect],'RADIUS',extended = True)
+        model,_ = ols_fit(train_data,test_params[i][connect],'DIAMETER')#,extended = True)
+        print(i, connect, model.params, 'R-Squared = ', model.rsquared_adj)
         models[i][connect] = {feature:model.params[num] for num,feature in enumerate(test_params[i][connect])}
 
-cd = complete_dict
-for num,(comp,parent,fname,ctype,pcon) in enumerate(zip(cd['CHILD'],cd['PARENT'],cd['FNAME'],cd['TYPE'],cd['PAR_CONNECT'])):
-    ctype = cdict[ctype]; pcon = pdict[pcon]
-    newrad = 0
+        model_file.write(i + '\n')
+        model_file.write(connect + '\n')
+        for feature in models[i][connect]:
+            line = ' '.join([feature, str(models[i][connect][feature])])
+            model_file.write(line + '\n')
+
+model_file.close()
+
+'''Calculate New Predicted Values from Equations''' #includes updating Parent Diameters
+for line in complete_list:
+    #if line[header['FNAME']] == 'WT-1201MSN03.CNG_extract':
+    comp = line[header['CHILD']]; parent = line[header['PARENT']]; fname = line[header['FNAME']]
+    ctype = cdict[line[header['TYPE']]]; pcon = pdict[line[header['PAR_CONNECT']]]
+    newrad = 0; newrad_i = 0
     for feature in test_params[ctype][pcon]:        
         '''new predictions with updating parent radius'''
-        if feature == 'PARENT_RAD':                       #start with initial comps, with saved parent radius as soma val
+        if feature == 'PARENT_DIA':                       #start with initial comps, with saved parent radius as soma val
             if pcon == 'Initial':                   
-                newrad = newrad + models[ctype][pcon][feature] * complete_dict['PARENT_RAD'][num]
+                newrad = newrad + models[ctype][pcon][feature] * line[header['PARENT_DIA']]
+                newrad_i = newrad_i + line[header['DIAMETER']]
             else:                                         #if parent radius of any other comp, use updated radius
                 newrad = newrad + models[ctype][pcon][feature] * newrads[fname][parent]
+                newrad_i = newrad_i + models[ctype][pcon][feature] * newrads_i[fname][parent]
                 #newrad = newrad + newrads[fname][parent]
 
         else:                                             #if other feature value, find and update radius
-            newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
+            newrad = newrad + models[ctype][pcon][feature] * line[header[feature]]
+            if parent != '1': #only applies additional features to predicted initial radii
+                newrad_i = newrad_i + models[ctype][pcon][feature] * line[header[feature]]
         '''old predictions with non-updating parent radius'''
         #newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
 
-    newrads[fname][comp] = newrad   
-    if fname in testing_files:  #save new predicted radius and original radius for R analysis and later plots
-        #[x.append(y) for x,y in zip([test_anal[ctype]['pred'][fname],test_plot[ctype]['pred']])]
-        #[x.append(complete_dict['RADIUS'][num]) for x in zip([test_anal[ctype]['org'][fname],test_plot[ctype]['org']])]
-        test_anal[ctype]['pred'][fname].append(newrad)
-        test_anal[ctype]['org'][fname].append(complete_dict['RADIUS'][num])
-        test_plot[ctype]['pred'].append(newrad)
-        test_plot[ctype]['org'].append(complete_dict['RADIUS'][num])
-    elif fname in training_files:
-        #[x.append(newrad) for x in zip([train_anal[ctype]['pred'][fname],train_plot[ctype]['pred']])]
-        #[x.append(complete_dict['RADIUS'][num]) for x in zip([train_anal[ctype]['org'][fname],train_plot[ctype]['org']])]
-        train_anal[ctype]['pred'][fname].append(newrad)
-        train_anal[ctype]['org'][fname].append(complete_dict['RADIUS'][num])
-        train_plot[ctype]['pred'].append(newrad)
-        train_plot[ctype]['org'].append(complete_dict['RADIUS'][num])
+    newrads[fname][comp] = newrad
+    newrads_i[fname][comp] = newrad_i
 
+    '''Save Predicted Values by File and by Node Type'''
+    tlist = []
+    tlist.append('Train') if fname in training_files else tlist.extend(['Test','Test_i'])
+
+    #iterate through Train, Test, and Test_i dictionaries and save by file name and node type
+    for ts in tlist:
+        model_data[ctype][ts]['fname'][fname]['org'].append(line[header['DIAMETER']])   #save original width 
+        model_data[ctype][ts]['node_type'][pcon]['org'].append(line[header['DIAMETER']])
+        if ts != 'Test_i':
+            model_data[ctype][ts]['fname'][fname]['pred'].append(newrad)                #save new width w/o original initial
+            model_data[ctype][ts]['node_type'][pcon]['pred'].append(newrad)
+        else:
+            model_data[ctype][ts]['fname'][fname]['pred'].append(newrad_i)              #save new width w/ original initial
+            model_data[ctype][ts]['node_type'][pcon]['pred'].append(newrad_i)
+
+'''Calculate Correlation of Predicted to Original Diameter by File and by Node Type'''
+corr_data = {} #correlation data from values found in model_data
 for i in comp_types:
-    test_r = []; train_r = []
-    for fname in file_list:
-        if fname in testing_files:          #calculate rsquared values for each file in training and testing sets
-            r_val,_ = pearsonr(test_anal[i]['pred'][fname],test_anal[i]['org'][fname])
-            test_r.append(r_val**2)
-        elif fname in training_files:
-            r_val,_ = pearsonr(train_anal[i]['pred'][fname],train_anal[i]['org'][fname])
-            train_r.append(r_val**2)
+    corr_data[i] = {ts:{'fname':{},'node_type':{nd:[] for nd in pdict.values()}} for ts in ['Train','Test','Test_i']}
+    
+    for tt in ['Train','Test','Test_i']: #calculate correlation within node type across files
+        corr_data[i][tt]['fname'] = {fname:[] for fname in training_files} if tt == 'Train' else {fname:[] for fname in testing_files}
+        for nt in pdict.values():
+            r_val,_ = pearsonr(model_data[i][tt]['node_type'][nt]['pred'],model_data[i][tt]['node_type'][nt]['org'])
+            corr_data[i][tt]['node_type'][nt].append(r_val**2)
+
+    for fname in file_list:  #calculate correlation within individual files 
+        tlist = []
+        tlist.append('Train') if fname in training_files else tlist.extend(['Test','Test_i'])
+        for ts in tlist:
+            r_val,_ = pearsonr(model_data[i][ts]['fname'][fname]['pred'],model_data[i][ts]['fname'][fname]['org'])
+            corr_data[i][ts]['fname'][fname].append(r_val**2)
+
+    '''Plot Predicted to Original Diameter Values and Correlations'''
     print(i, ' average',' stdev')
-    print('Train',np.average(train_r),np.std(train_r))
-    print('Test',np.average(test_r),np.std(test_r))  #calculate averaged rsquared for training, testing, and all files
-    train_label = 'Average $R^2$ = ' + '{:.4}'.format(np.average(train_r)) + ' StDev = ' '{:.4}'.format(np.std(train_r))
-    test_label = 'Average $R^2$ = ' + '{:.4}'.format(np.average(test_r)) + ' StDev = ' '{:.4}'.format(np.std(test_r))
-    ave_r = '{:.4}'.format(np.average([np.average(train_r),np.average(test_r)]))
+    t_labels = {}; to_plot = {}
+    for pt in ['Train','Test','Test_i']:
+        to_plot[pt] = {'org':[],'pred':[]}
+        for fname in model_data[i][pt]['fname']:             #send single averaged R2 (and stdev) across all files to plot
+            to_plot[pt]['org'].extend(model_data[i][pt]['fname'][fname]['org'])
+            to_plot[pt]['pred'].extend(model_data[i][pt]['fname'][fname]['pred'])
+        ave = np.average(list(flatten(corr_data[i][pt]['fname'].values()))); std = np.std(list(flatten(corr_data[i][pt]['fname'].values())))
+        t_labels[pt] = '$R^2$ = ' + str(round(ave,2)) + ' +/- ' + str(round(std,2))
+        
+        print(pt,'By File',ave,std)
+        print(corr_data[i][pt]['node_type'])
     title = i + ' Dendrites'
-    additions = 'Average $R^2$ = ' + ave_r
-    saving = i + ' Predicted Radii'                  #plot predicted vs. original radii
-    main_plot([train_plot[i],test_plot[i]], ['org','pred'], title, ax_titles = ['Original Radius','Predicted Radius'], add = additions, labels = ['Training Set: ' + train_label,'Testing Set: ' + test_label], where = 'lower right', save_as=saving) 
+    #additions = 'Average $R^2$ = ' + ave_r
+    saving = i + ' Predicted Diameter'
+    main_plot([to_plot['Train'],to_plot['Test'],to_plot['Test_i']], ['org','pred'], title, ax_titles = ['Original Diameter ($\mu$m)','Predicted Diameter ($\mu$m)'], labels = ['Train         ' + t_labels['Train'],'Test          ' + t_labels['Test'],'Test + In. ' + t_labels['Test_i']], where = 'lower right', save_as=saving)# , add = additions)
