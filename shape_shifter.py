@@ -2,7 +2,7 @@
    <Condenses .p files of neuron traces to maintain specific lambda (ac or dc) and removes 0 length compartments.>
     Copyright (C) <2016>  <Saivardhan Mada>
     Copyright (C) <2017>  <Avrama Blackwell>
-    Copyright (C) <2020>  <Jonathan Reed>
+    Copyright (C) <2021>  <Jonathan Reed>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,13 +17,13 @@
 
 #Usage: python shape_shifter.py --file 'filename.p' --type 'condense'
 #Types:
-#  '0'        just remove compartments of size 0
+#  '0'        remove compartments of size 0
 #  'condense' combine compartments of similar radius (specify --rad_diff 0 to only combine identical radii),
 #               electrotonic length not to exceed max_len* lambda.
 #  'expand'   to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
 #               electrotonic length of subdivided compartments do not exceed max_len* lambda
 #  'radii'    to change the radius value depending on the distance to the end of the longest branch
-# can specify alternative values to default rm [4], cm [0.01], ri [2.5] units are SI
+# can specify alternative values to default rm [4], cm [0.01], ri [2.5] in SI units
 # can specify frequency (--f) for ac lambda calculation, current default is 0.1 hz
 # can specify maximum electrotonic length (--max_len) current default is 0.1, specify 0 to use dc lambda
 # can specify maximum difference (rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
@@ -31,11 +31,12 @@
 
 
 #Ideal Usage Scenario:
-#neuromorpho.org morphology files often inaccurate compartment (node) diameters
-
 #run shape_shifter.py through type radii for more accurate diameters
 #can currently accept either .swc or .p morphology files
-#requires model.txt from morph_feature_analysis.py to load in MLR model
+
+#in Shape_Shifter Directory:
+#requires file_extract.txt from morph_feature_extract to load feature values
+#requires model.txt from morph_feature_analysis.py to load in OLS model
 
 # Input:   python shape_shifter.py --file morph_file.swc --type radii --model model.txt
 # Ouput:   morph_file_org.p
@@ -57,7 +58,7 @@
 #Avrama Blackwell
 #Apr 28, 2017
 #Jonathan Reed
-#Oct 21, 2020
+#Mar 14, 2021
 
 from __future__ import print_function, division
 import sys
@@ -70,11 +71,7 @@ import numpy as np
 from scipy.stats import pearsonr
 from extract_dynamic import create_dict
 import matplotlib.pyplot as plt
-#from graph_extract import simple_plot
-#from graph_extract import save_png
 
-#testing recursion
-#sys.setrecursionlimit(1500)
 debug=0   #default is 0
 info=0    #default is 1
 #Globals for compartment values stored in list structure
@@ -126,6 +123,7 @@ class morph:
                                 soma_nodes = soma_nodes + 1
                 if soma_nodes == 1:
                         print('***1-pt soma detected***')
+                
                 if soma_nodes == 3:
                         print('***3-pt soma detected***') #default 1_1 at coordinates 0,0,0 --> merge to single 1-pt soma 
                         comp1 = self.linelist[1]; comp2 = self.linelist[2]
@@ -218,16 +216,15 @@ def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
         l=surface_tot/(np.pi*diameter)
         if debug:
                 print('TSA: dia %.5f, l=%.2f tsa=%.1f Ltot=%.5f' % (diameter, l, np.pi*diameter*l,l/(lamb_factor*math.sqrt(diameter))))
-        x = 0.0
-        y = 0.0
-        z = 0.0
+        x = 0.0; y = 0.0; z = 0.0
         #total distance in x, y and z.  
         for comp in condense:
-                x = np.sqrt(x)
-                y = np.sqrt(y)
-                z = np.sqrt(z)
+                x = np.sqrt(x); y = np.sqrt(y); z = np.sqrt(z)
         if debug:
                 print ('xtot %.3f ytot %.3f ztot %.3f'%(x, y, z))
+        theta = np.arctan(y/x) if x > 0 else 0
+        phi = np.arccos(z/math.sqrt(x*x+y*y+z*z)) if (x>0 or y>0 or z>0) else 0
+        '''
         if (x > 0) :
                 theta = np.arctan(y/x)
         else:
@@ -236,6 +233,7 @@ def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
                 phi = np.arccos(z/math.sqrt(x*x+y*y+z*z))
         else:
                 phi = 0
+        '''
         if debug:
                 print ('theta %.4f phi %.4f ' %(theta,phi))
         x = np.round(l*math.cos(theta)*math.sin(phi),3)
@@ -280,7 +278,7 @@ def to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,
                 if info:
                         print ('not condensing',len(condense),Ltot, line[CHILD], "rad", rad_diff,delta_rad)
         return condense, Ltot, surface_tot
-
+'''
 def branch_comp(linelist):
         parents = [line[PARENT] for line in linelist] #create a list of just parents
         parent_count = collections.Counter(parents)   #create dictionary giving number of times each parent occurs
@@ -290,11 +288,11 @@ def branch_comp(linelist):
 
 def end_comp(linelist, parents):
         unique_parents=set(parents) #set() eliminates duplicate parents
-        children=[line[CHILD] for line in linelist] #create a list of just children
+        children=[line[CHILD] for line in linelist] #create a list of children
         end_points=list(set(children)-unique_parents)
         print(end_points)
         return end_points
-
+'''
 def calc_enddis(dis_to_end, par_comp, line, ending = 0):
         if ending == 0:                                     #if endpoint
                 dis_to_end = dis_to_end + line[COMPLEN]/2
@@ -351,9 +349,10 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 #maybe do the re.search here for ANY subsequent compartment that would possibly connect
                 #maybe add the expand_list to correct position into linelist outside for loop
                 #write statement for entire line_list
-        branch_points, parents = branch_comp(m.linelist)
+        
         ######## type = condense condenses branches with similar radius and combined electronic length < 0.1 lambda
         if (type1 == "condense"):    #if rad_diff = 0, only condenses branches with same radius
+                branch_points, parents = branch_comp(m.linelist)
                 #cvapp converts .swc to .p file format AND from absolute to relative coordinates
                 #print(m.linelist)
                 #print('Original Compartments : ' + len(m.linelist[0]))
@@ -434,9 +433,11 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 cdict = {3:'Basal', 4:'Apical'}
                 
                 for num,line in enumerate(m.linelist):
+                        #print(line[CHILD])
                         newrad = 0; newrad_i = 0
                         if '_1' in line[CHILD]:
                                 soma_count = soma_count + 1
+                                print(line[CHILD])
                         else:
                                 new_num = num - soma_count   #features do not have soma extended values
                                 ctype = cdict[features['TYPE'][new_num]]; pcon = pdict[features['PAR_CONNECT'][new_num]]
@@ -449,7 +450,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                                         newrad = newrad + models[ctype][pcon][feature] * newrads[line[PARENT]]
                                                         newrad_i = newrad_i + models[ctype][pcon][feature] * newrads_i[line[PARENT]]
                                         else:                              
-                                                newrad = newrad + models[ctype][pcon][feature] * features[feature][num]
+                                                newrad = newrad + models[ctype][pcon][feature] * features[feature][new_num]
                                                 if not '_1' in line[PARENT]:
                                                         newrad_i = newrad_i + models[ctype][pcon][feature] * features[feature][new_num]
                                 newrads[line[CHILD]] = newrad
