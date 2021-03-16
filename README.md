@@ -8,12 +8,12 @@ shape_shifter will accept .swc or .p morphology files for morphology conversion.
 
 **shape_shifter usage**
 
- - Input:  
+ Input:
  ``` 
  python3 shape_shifter.py --file 'filename.swc' --type 'condense'
  ```
- - Output:
- - filename_condensed.p
+ Output:
+ filename_condensed.p
  
 type can be:
   - '0'        remove compartments of size 0; automatically completed if other types specified
@@ -55,35 +55,35 @@ run morph_feature_analysis.py to compare features and create model equations
 + _extract.txt file(s) placed in original folder with .swc morphologies
 + will require user analysis of feature plots/correlations and specified features used in model equations within .py file
 
-  Input:
+  - Input:
   ```
   python3 morph_feature_analysis.py --path /path/to/folder_with_swc_extract_files
   ```
-  Output:
-  multiple feature and correlation plots (.png), model.txt
+  - Output:
+  - multiple feature and correlation plots (.png), model.txt
   
 run shape_shifter.py through type radii to predict new radius for selected morphology 
 
 + .swc morphology file(s) and _extract.txt file(s) will need to be copied into shape_shifter repository
 + by default, will print multiple versions of morphology file with original diameter (org), predicted diameter (pred), predicted diameter including original inital diameters (pred_i)
 
- Input:   
+ - Input:   
  ``` 
  python shape_shifter.py --file morphology_file.swc --type radii --model model.txt
  ```
- Ouput:
- morphology_file_org.p, morphology_file_pred.p, morphology_file_pred_i.p
+ - Ouput:
+ - morphology_file_org.p, morphology_file_pred.p, morphology_file_pred_i.p
  
 run shape_shifter.py again through type condense to combine similar compartments together for future simulation
 
 + can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
  
- Input:   
+ - Input:   
  ``` 
  python shape_shifter.py --file morphology_file_pred.p --type condense --f 100 --rad_diff 0 
  ```
- Ouput:
- morphology_file_pred_condensed.p
+ - Ouput:
+ - morphology_file_pred_condensed.p
 
 CVAPP - Description
 ============
