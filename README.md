@@ -1,68 +1,87 @@
 Description
 ============
-shape_shifter is a morphology converter which takes in Genesis (.p) files of neurons and simplifies the morphology by combining sets of compartments with the same (or similar) radius and with combined length less than specified value of electrotonic length, caculated using either AC or DC methods. Previous trials of this program has resulted in reduction of the orginal file by almost 90%.  shape_shifter also can be used to transform a simple morphology with extremely long compartments into smaller compartments with same topology (connectivity).
+shape_shifter is a morphology converter which takes in neuron morphology files (.swc or Genesis .p) and simplifies morphology for more efficient use in model simulation. shape_shiter can combine sets of compartments with the same (or similar) radius and with combined length less than specified value of electrotonic length, caculated using either AC or DC methods. Previous trials of this program has resulted in reduction of the orginal file by almost 90%, and greatly increases processing speed in simulation with identical original (non-reduced) response. shape_shifter also can be used to transform a simple morphology with extremely long compartments into smaller compartments with same topology (connectivity).
 
 **input files**
 
-Morphology files can be attained through http://neuromorpho.org/ and these .swc files on NeuroMorpho can be converted to .p files automatically using convert_swc_pfile.py.  We strongly recommend using this instead of cvapp as parsing issues are common causing a freeze of the program.  
-
-**convert_swc_pfile usage**
- Input:  python convert_swc_pfile.py --file filename.swc
- Output: filenameconvert.p
+shape_shifter will accept .swc or .p morphology files for morphology conversion. Morphology files (.swc) can be attained from the NeuroMorpho repository through http://neuromorpho.org/ 
 
 **shape_shifter usage**
+
  Input:  
  ``` 
- python shape_shifter.py --file 'filename.p' --type 'radii' 
+ python3 shape_shifter.py --file 'filename.swc' --type 'condense'
  ```
- Output: filenameout.p
-
+ Output:
+ filename_condensed.p
+ 
 type can be:
-  - '0'        just remove compartments of size 0
+  - '0'        remove compartments of size 0; automatically completed if other types specified
   - 'condense' combine compartments of similar radius (specify --rad_diff 0 to only combine identical radii),
                electrotonic length not to exceed max_len* lambda.
   - 'expand'   to change single, long compartment (e.g. a Neuron software segment) into multiple smaller compartments
                electrotonic length of subdivided compartments do not exceed max_len* lambda
-  - 'radii'    to change the diameter value depeneding on the distance to the end of the longest branch
+  - 'radii'    to change compartment width based on feature equations in OLS model (model.txt) from morph_feature_analysis
 
 + optional arguments:
 
-  - can specify alternative values to default rm [4], cm [0.01], ri [2.5] for calculating lambda, units are SI
+  - can specify alternative values to default RM (--rm 4), CM (--cm 0.01), RI (--ri 2.5) for calculating lambda, units are SI
   - can specify frequency (--f) for ac lambda calculation, default is 0.1 hz, specify 0 to use dc lambda
   - can specify maximum electrotonic length (--max_len), default is 0.1
-  - can specify criteria maximum difference (rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
+  - can specify criteria maximum difference (--rad_diff) in radii for combining adjacent compartments, default is 0.1 (=10%)
+  - can specify model.txt (--model) to pass in feature equations for use in type radii (see Ideal Usage Scenario)
   
 change info or debug parameter to get more or less information while running program
            
 
 Ideal Usage Scenario
 ============
-neuromorpho.org morphology files often inaccurate compartment (node) diameters
+NeuroMorpho morphology files often inaccurate compartment (node) diameters.
+To calculate diameter from morphology feature values:
 
-+ convert .swc file --> .p file using convert_swc_pfile.py
+run morph_feature_extract.py to calculate feature values from .swc morphology files
 
- - Input:  
- ``` 
- python convert_swc_pfile.py --file filename.swc 
- ```
- - Output:  filenameconvert.p
++ requires Python 2 for btmorph (https://btmorph.readthedocs.io/) to calculate feature values
 
-+ run shape_shifter.py through type radii for more accurate diameters
+  -Input:
+  ```
+  python2 morph_feature_extract.py --path /path/to/folder_with_swc_files
+  ```
+  -Output:
+  -filename_extract.txt
 
+run morph_feature_analysis.py to compare features and create model equations
+
++ _extract.txt file(s) placed in original folder with .swc morphologies
++ will require user analysis of feature plots/correlations and specified features used in model equations within .py file
+
+  -Input:
+  ```
+  python3 morph_feature_analysis.py --path /path/to/folder_with_swc_extract_files
+  ```
+  -Output:
+  -multiple feature and correlation plots (.png), model.txt
+  
+run shape_shifter.py through type radii to predict new radius for selected morphology 
+
++ .swc morphology file(s) and _extract.txt file(s) will need to be copied into shape_shifter repository
++ by default, will print multiple versions of morphology file with original diameter (org), predicted diameter (pred), predicted diameter including original inital diameters (pred_i)
  - Input:   
  ``` 
- python shape_shifter.py --file filenameconvert.p --type radii
+ python shape_shifter.py --file morphology_file.swc --type radii --model model.txt
  ```
- - Ouput:   filenameconvertout.p
+ - Ouput:
+ - morphology_file_org.p, morphology_file_pred.p, morphology_file_pred_i.p
  
-+ run shape_shifter.py again through type condense to combine similar compartments together for future simulation
- can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
+run shape_shifter.py again through type condense to combine similar compartments together for future simulation
++ can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
  
  - Input:   
  ``` 
- python shape_shifter.py --file filenameconvert.p --type condense --f 100 --rad_diff 0 
+ python shape_shifter.py --file morphology_file_pred.p --type condense --f 100 --rad_diff 0 
  ```
- - Ouput:   filenameconvertoutout.p
+ - Ouput:
+ - morphology_file_pred_condensed.p
 
 CVAPP - Description
 ============
