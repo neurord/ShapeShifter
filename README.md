@@ -1,6 +1,6 @@
 Description
 ============
-shape_shifter is a morphology converter which takes in neuron morphology files (.swc or Genesis .p) and simplifies morphology for more efficient use in model simulation. shape_shiter can combine sets of compartments with the same (or similar) radius and with combined length less than specified value of electrotonic length, caculated using either AC or DC methods. Previous trials of this program has resulted in reduction of the orginal file by almost 90%, and greatly increases processing speed in simulation with identical original (non-reduced) response. shape_shifter also can be used to transform a simple morphology with extremely long compartments into smaller compartments with same topology (connectivity).
+shape_shifter is a morphology converter which takes in neuron morphology files (.swc or Genesis .p) and simplifies dendritic morphology for more efficient use in model simulation. shape_shiter can combine sets of compartments with the same (or similar) radius and with combined length less than specified value of electrotonic length, caculated using either AC or DC methods. Previous trials of this program has resulted in reduction of the orginal file by almost 90%, and greatly increases processing speed in simulation with identical original (non-reduced) response. shape_shifter also can be used to transform a simple morphology with extremely long compartments into smaller compartments with same topology (connectivity).
 
 **input files**
 
@@ -66,6 +66,7 @@ run shape_shifter.py through type radii to predict new radius for selected morph
 
 + .swc morphology file(s) and _extract.txt file(s) will need to be copied into shape_shifter repository
 + by default, will print multiple versions of morphology file with original diameter (org), predicted diameter (pred), predicted diameter including original inital diameters (pred_i)
+
  - Input:   
  ``` 
  python shape_shifter.py --file morphology_file.swc --type radii --model model.txt
@@ -74,6 +75,7 @@ run shape_shifter.py through type radii to predict new radius for selected morph
  - morphology_file_org.p, morphology_file_pred.p, morphology_file_pred_i.p
  
 run shape_shifter.py again through type condense to combine similar compartments together for future simulation
+
 + can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
  
  - Input:   
@@ -85,8 +87,9 @@ run shape_shifter.py again through type condense to combine similar compartments
 
 CVAPP - Description
 ============
-Mentioned above, 
-If using cvapp, provided in this repository. We strongly recommend that the 1st three soma lines in the cvapp output file be combined into a single coma compartment by hand prior to running shape_shifter, because cvapp output of neuromorpho files typically has 3 soma compartments, with the first, parent compartment (which cannot be eliminated by shape_shifter) having zero size. In addition, you may need to remove blank lines from the .p file to avoid error messages.
+By default, shape_shifter will change 3-pt soma to 1-pt soma in morphology, unless greater than 3 soma nodes are present. shape_shifter will only alter dendritic compartments in morphology and maintain original size, shape, length, and diameter of soma nodes (unless 3-pt soma).
+
+If wanting to visualize morphology or change soma compartments manually, cvapp is provided in this repository. We strongly recommend that the 1st three soma lines in the cvapp output file be combined into a single coma compartment by hand prior to running shape_shifter, because cvapp output of neuromorpho files typically has 3 soma compartments, with the first, parent compartment (which cannot be eliminated by shape_shifter) having zero size. In addition, you may need to remove blank lines from the .p file to avoid error messages.
 
 **CVAPP usage**
 
