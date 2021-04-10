@@ -14,168 +14,63 @@
 
 #####statsmodels requires python3#####
 
-#Usage:  python3 -i morph_feature_analysis.py --path /path/to/folder/with/archives
+#Usage:  python3 -i morph_feature_analysis.py --path /path/to/folder/with/archives 
 #        uses visual and statistical tools to analyze features predictive of node diameter
 #        will output feature plots as .png and model equations as model.txt
 #        where path is name of path to folder containing archive folder(s) with original .swc morphologies and .CNG_extract.txt files
 #        .CNG_extract.txt files created from morph_feature_extract.py
+#        optional parameter: --seed default=14 - for reproducing prior results on unix OS
+#                            --train_test  npy file with training and testing files - for reproducing prior results on any OS
 
 #George Mason University
 #Jonathan Reed
 #March 14, 2021
 
+#Updated 2021 April 10
+#Avrama Blackwell
+
 import numpy as np
-from scipy import optimize
 from scipy.stats import pearsonr
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.offsetbox import AnchoredText
-import statsmodels.api as sm
 import random
-import seaborn as sns
 import argparse
 import os
-import glob
-import re
+import morph_feature_utils as mfu
+import morph_feature_plots as mfp
 
-'''Save plot as png'''            
-def save_png(png, title):                       #default to save plots instead of plot to window
-    png.savefig(title, bbox_inches = 'tight')   #remove empty space around plots
-    print('File Created : ' + str(title))
-    png.close()
-    
-'''Main Plot Function for Basic, Fit or 3d Color Plots'''
-def main_plot(data, var, title = None, ax_titles = None, labels = None, save_as = None, plot_type = None, fit_line = None, add = None, where = None, marker_size = None):
-    #plt.rc('font', size = 38)                       
-    plt.rc('font', size = 34)                    #default plot and font sizes
-    fig, ax = plt.subplots(figsize = (20,10))
-    #fig, ax = plt.subplots(figsize = (10,10))
-    if add:                                      #additional information to plot
-        at = AnchoredText(add, prop=dict(size=28), frameon=True, loc='upper center')
-        at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2") 
-        ax.add_artist(at)
-       
-    if plot_type == 'Color3d':                    #plot 3 variables(x,y,z) with variable 'z' using colorbar
-        scat = ax.scatter(data[var[0]], data[var[1]], c=data[var[2]], s=100, marker='o', label = labels)
-        fig.colorbar(scat)
-        
-    elif plot_type == 'Fit':                      #plot initial fitted equation to data values
-        plt.plot(data[var[0]], data[var[1]], 'o')
-        plt.plot(fit_line[0], fit_line[1], color = 'orange', label = fit_line[2]) 
-    
-    else:
-        for num in range(len(data)):
-            if labels:                            #can modify markersize or alpha (transparency) of plotted points
-                plt.plot(data[num][var[0]], data[num][var[1]], 'o', label = labels[num], markersize = 15)
-            else:
-                plt.plot(data[num][var[0]], data[num][var[1]], 'o', markersize = 15)
+pd.set_option("display.max_columns", 20)
+pd.set_option('display.width',240)
 
-    if labels or fit_line:
-        plt.legend(loc = where) if where else plt.legend()
-    plt.xlabel(ax_titles[0]) if ax_titles else plt.xlabel(var[0])
-    plt.ylabel(ax_titles[1]) if ax_titles else plt.ylabel(var[1])
-    if title:
-        plt.title(title)                           #will require 'title' if nothing passed in 'save_as'
-    save_png(plt,save_as + '.png') if save_as else save_png(plt,title + '.png')
+#global parameter, matches the swc designation
+dend_types={'3':'Basal','4':'Apical'}
 
-'''Plot Parameter Correlation to Diameter with Pearson's R'''
-def corr(data,selection,title,save_as = None):
-    dframe = pd.DataFrame(data,columns = selection.keys())  #dataframe reorders alphabetically feature columns by default 
-    dcorr = dframe.corr()                                   #set feature order by select_params --> passed as 'selection'
-    for i in dcorr:
-        dcorr[i] = dcorr[i]**2                              #dataframe correlation as R2
-    plt.rc('font', size = 30)            
-    fig,ax = plt.subplots(figsize = (20,15))
-    #sns.set(font_scale = 4)
-    rsquared = '$R^2$'                                      #can modify heatmap for either (+/-) R or (+) R2 for Feature Correlations
-    #ax = sns.heatmap(dcorr,vmin = -1,vmax = 1, center = 0,cmap = sns.diverging_palette(20, 220, n=256),square = True,annot = True,cbar_kws={'shrink':1,'label':rsquared})#"Pearsons R"}
-    ax = sns.heatmap(dcorr,vmin = 0,vmax = 1, center = 0.5,cmap = 'Blues',square = True,annot = True,cbar_kws={'label':rsquared})
-    ax.set_yticklabels([sub['short'] for sub in selection.values()],rotation = 0)
-    ax.set_xticklabels([sub['short'] for sub in selection.values()],rotation = 0,horizontalalignment = 'right',ha = 'center')
-    cbar = ax.collections[0].colorbar                        #selection will contain short and long versions of feature names
-    plt.title(title, loc = 'left')   
-    save_png(plt,save_as + '.png') if save_as else save_png(plt,title + '.png')
-    
-'''Function Definitions for Fit Equations'''
-#fit selected variables to equations; can input more functions for other feature relationships (to diameter)
-def func0(x,m,b):                                     
-    return m*x+b
+'''Organize Data by Parent Connection - Initial, Branch Children, Continuing Compartments'''
+comp_list = ['Initial','BP_Child','Continuing','All']
+connect_dict = {2:'Continuing',1:'BC', 0:'Initial'}
 
-'''Fit Data to Selected Equation and Obtain Residuals'''
-#ALTERNATIVE Method to plot predicted values and find residuals
-def initial_fit(data, var, func):          #data as dictionary with feature data and var is list of selected features
-    x = var[0]                             #assumes only fit to single x- and y- variable
-    y = var[1]                             #will require modification if multiple 'x' or transformed 'x' features
-    popt, pcov = optimize.curve_fit(func[0],data[x],data[y])    #fits equation to selected function if possible
-    print('This is fit estimate for : ', func[1])
-    print('popt',popt)
-    print('pcov',pcov)
-    print('Where x = ', x, ' and y = ', y) 
- 
-    '''Plot Data to Function and Find Residuals'''
-    for i in data[x]:
-        temp_max = round(max(data[i])) 
-        temp_min = round(min(data[i]))
-        x_range = np.arange(temp_min, temp_max + 1, 1)              #plot original feature values to line equation
-        main_plot(data, [i, y], 'Fitted Equation ' + i + ' to ' + y, fit_line = [x_range, func[0](x_range, *popt), func[1]])
-        res_label = str(i) + '_Res'  
-        predictions = [func[0](xval,*popt) for xval in data[i]]     #plot original feature values to predicted feature values
-        main_plot(data, [y, predictions], 'Predicted vs. Actual Plot : ' + i)
-                                                                    #plot original feature values to residuals
-        data[res_label] = [yval - est for yval,est in zip(data[y],predictions)]
-        print('Residual Plot : ', i, ' to ', y)
-        main_plot(data, [y, res_label], 'Residual Plot : ' + i)
-        
-    return data, [popt,pcov]
+'''Select parameters to analyze with Compartment Diameter, also give abbreviations and long names'''
+#if additional features to plot, add plot labels below
+features = {'DIAMETER': {'short':'D','long':'Diameter'},
+                 'PARENT_DIA': {'short':'PD','long':'Parent Diameter'},
+                 'BRANCH_LEN': {'short':'TL','long':'Total Dendritic Length'},
+                 'NODE_DEGREE': {'short':'TD','long':'Terminal Degree'},
+                 'NODE_ORDER': {'short':'IB','long':'Initial Branch Order'},
+                 'PATH_DIS': {'short':'PS','long':'Path To Soma'},
+                 'PATH_TO_END': {'short':'LP','long':'Longest Path to Terminal'} }
 
-'''OLS Regression to fit Variables'''
-#PREFERRED Method to predict feature variable values
-def ols_fit(data,xlabel,ylabel,constant = None,extended = None):
-    temp_df = pd.DataFrame(data)   #xlabel can be multiple names of parameters to fit towards Diameter
-    X = temp_df[xlabel]
-    Y = temp_df[ylabel]
-    if constant:                   #by default no constant or y-intercept fitted to equation
-        X = sm.add_constant(X)      
-    model = sm.OLS(Y,X).fit()
-    if extended:
-        print(model.summary())     #by default no extended output printed within function
-    return model,model.predict(X)
+###control output  - should be made additional parameters   
+df_corr=False
+parameter_plots=False
+hist_features=[]#['PATH_DIS','PATH_TO_END','BRANCH_LEN','DIAMETER'] #set to empty to turn off these plots
+corr_matrices=False
+final_predictions=True
+xcorr=False
+rall_test=False
 
-'''Equation Values to compare OLS models'''
-def regress_val(model, split = None, r = None): 
-    f_stat = '{:.2e}'.format(model.fvalue)
-    r_squared = '{:.4}'.format(model.rsquared_adj)
-    r_val = '{:.4}'.format(np.sqrt(float(r_squared))) 
-    aic = '{:.4}'.format(model.aic)
-    bic = '{:.4}'.format(model.bic)
-    cond_num = '{:.4}'.format(model.condition_number)
-    if split:
-        return f_stat,r_val if r == None else f_stat,r_squared
-    else:
-        vals = [f_stat,r_squared,cond_num,aic,bic]
-        return vals
-
-'''Flatten nested lists of values into single list of values'''
-def flatten(container):    
-    for i in container:                 
-        if isinstance(i, (list,tuple)):
-            for j in flatten(i):
-                yield j
-        else:
-            yield i
-
-'''Split N sequences into 'equal' sizes'''
-def split_seq(seq, size):               #splits file_list into equal amounts for testing-training datasets
-        newseq = []
-        splitsize = 1.0/size*len(seq)
-        for i in range(size):
-            newseq.append(seq[int(round(i*splitsize)):int(round((i+1)*splitsize))])
-        return newseq
-    
-
-'''Start of Working Code'''
 parser = argparse.ArgumentParser()
-parser.add_argument("--path", type = str)   
+parser.add_argument("--path", type = str)
+parser.add_argument("--seed",type=int, default=14)
+parser.add_argument("--train_test",type=str)
 args = parser.parse_args()                      
 path = args.path                                
 
@@ -186,217 +81,243 @@ if len(dirs) == 0:
         path = root.rstrip('/')                      #fix for trailing '/' in path
     dirs = [os.path.basename(path)]
     root = os.path.dirname(path) + '/'
+subtitle=root.rstrip('/')+'_'
+df,complete_list,header=mfu.read_morphologies(root,dirs)
+nodes={ar:[] for ar in np.unique(df.ARCHIVE)}
+for ar in np.unique(df.ARCHIVE):
+    ardf=df[df.ARCHIVE==ar]
+    for fname in np.unique(ardf.FNAME):
+        fdf=ardf[ardf.FNAME==fname]
+        nodes[ar].append(len(fdf))
+    print(subtitle, ar, 'mean nodes', np.mean(nodes[ar]))
 
-archive_dict = {}; header = {}                                
-file_list = []; complete_list = []
+test_params = {}      #'Apical' and 'Basal' are classification of compartment types within .swc morphologies
+#these features together with the .npy files will allow reproducing the predictive equations reported in the manuscript
+if 'Hippocampus' in path.split('/'):
+    test_params['Apical'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_TO_END'],'Continuing':['PARENT_DIA']} #Hippo Apical
+    test_params['Basal'] = {'Initial':['PARENT_DIA','BRANCH_LEN'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA']} #Hippo Basal
+    ax_max=10
+    legend_loc='lower right'
+elif 'Cerebellum' in path.split('/'):
+    test_params['Basal'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA']} #Purkinje
+    ax_max=8
+    legend_loc='upper right'
+elif 'Basal_Ganglia' in path.split('/'):
+    test_params['Basal'] = {'Initial':['PARENT_DIA','NODE_DEGREE'],'BP_Child':['PARENT_DIA','NODE_ORDER'],'Continuing':['PARENT_DIA']} #0.09,0.11,0.1
+    ax_max=6
+    legend_loc='upper right'
+else:
+    print('new archive, test_params will be determined from best model fit')
 
-'''Read in Morphology Data in Folder with Single/Multiple Archive(s)'''
-for d1 in dirs:                                      #can accept individual archives or multiple archives within single directory           
-    fullpath = root + d1 + '/*CNG_extract.txt'                      
-    data_list = []; apical_list = []; basal_list = []               
-    print('Working on Directory : ', str(d1))
-    for fname in glob.glob(fullpath):                               #locates and loops through _extract files in path
-        temp_name = re.search(d1 + '/(.*).txt', fname)
-        file_list.append(temp_name.group(1))
-        with open(fname) as f:
-            for line in f:
-                if line.strip():                                    #removes any empty lines
-                    if '*C' in line and not header:                 #finds feature names as header line and separately saves from data
-                        if 'XYZ' in line:                           
-                            line = re.sub('XYZ','X; Y; Z', line)    #fix for header length by separating XYZ into X,Y,Z 
-                        line = line.split('; ')                     
-                        for num, val in enumerate(line):            
-                            if '\n' in val:                         #fix for trailing '\n' attached to final parameter in header
-                                val = re.sub('\n','',val)
-                            if val == '*CHILD':                     #fix for leading '*' to indicate text in .swc file
-                                header['CHILD'] = num
-                            else:
-                                header[val] = num
-
-                    elif line[0] != '*' and line[0] != ' ' and line[0] != '/n':  #organizes remaining parameter data values    
-                        temp_line = line.split()
-                        for point, val in enumerate(temp_line):                  #Child, Type, Parent are DESCRETE values defined by .swc morphology
-                            if point != header['CHILD'] and point != header['TYPE'] and point != header['PARENT']:
-                                temp_line[point] = float(temp_line[point])
-                        temp_line.extend([temp_line[header['RADIUS']]*2,temp_line[header['PARENT_RAD']]*2,temp_name.group(1),d1]) 
-                        data_list.append(temp_line)              #adding new values of Diameter, Parent Diameter, File name, Archive name
-                        complete_list.append(temp_line)          #complete_list will be used to test equations changing radius
-                                                                                                                                    
-    '''Initial Data Separation by .swc Compartment Types (Basal/Apical if present) and Archive'''
-    if len(temp_line) > len(header):                             
-        for i in ['DIAMETER','PARENT_DIA','FNAME','ARCHIVE']:    #header with new added parameters
-            header[i] = len(header)
-    
-    for line in data_list:                                  #'3' - basal and '4' - apical .swc compartment type
-        if line[header['TYPE']] == '4':                     #currently does not keep axon data if present in .swc morphology
-            apical_list.append(line)                        
-        elif line[header['TYPE']] == '3':
-            basal_list.append(line)                        
-
-    if not 'Basal' in archive_dict.keys():                  #assumes basal compartment 'designation' in all .swc iles
-        archive_dict['Basal'] = {}                          #archive_dict will organize data by archive and by compartment type
-    archive_dict['Basal'][d1] = {}                          #individual data values will be stored in parameter lists 
-    for param,vals in zip(header.keys(),list(zip(*basal_list))):
-        archive_dict['Basal'][d1][param] = vals
+#mfu.compare_EM(df,path)
+################# correlations of various types using dictionaries
+if df_corr:
+    feat_corr={dtnum:{f:[] for f in hist_features+['PARENT_DIA']} for dtnum in np.unique(df.TYPE)}
+    for dtnum in feat_corr.keys():
+        ctdf=df[df.TYPE==dtnum] #added on 3/29
+        for feat in hist_features+['PARENT_DIA']:
+            for ar in np.unique(df['ARCHIVE']):
+                feat_corr[dtnum][feat].append(round(ctdf[ctdf.ARCHIVE==ar][feat].corr(ctdf[ctdf.ARCHIVE==ar]['DIAMETER']),4))
+        print(dend_types[dtnum],[ar for ar in np.unique(df['ARCHIVE'])])
+        for feat in feat_corr[dtnum].keys():
+            print(dtnum,feat,', corr by archive:',feat_corr[dtnum][feat])
+        for ar in np.unique(df['ARCHIVE']):
+             dfsubset=ctdf[(ctdf.ARCHIVE==ar) & (ctdf.PAR_CONNECT==1)]
+             print(ar, dend_types[dtnum], 'corr: 3/2',pearsonr(dfsubset['DIAMETER']**(1.5),dfsubset['PARENT_DIA']**(1.5))[0],
+                   'linear',pearsonr(dfsubset['DIAMETER'],dfsubset['PARENT_DIA'])[0])
         
-    if apical_list:                                         #add apical values if present in .swc file
-        if not 'Apical' in archive_dict.keys():
-            archive_dict['Apical'] = {}
-        archive_dict['Apical'][d1] = {} 
-        for param,vals in zip(header.keys(),list(zip(*apical_list))):
-            archive_dict['Apical'][d1][param] = vals
+    print(df.groupby(['TYPE','ARCHIVE'])[['PARENT_DIA','DIAMETER']].corr())
+    print(df.groupby(['TYPE','PAR_CONNECT'])[['PARENT_DIA','DIAMETER']].corr())
+    #print(df.groupby(['TYPE','ARCHIVE','PAR_CONNECT'])[['PARENT_DIA','DIAMETER']].corr())
     
-'''Organize Data by Parent Connection - Initial, Branch Children, Continuing Compartments'''
-comp_types = [i for i in archive_dict.keys()]
-comp_list = ['Initial','BP_Child','Continuing','All']
-complete_dict = {}; sep_data = {}; comb_data = {}  #create dictionaries of separate or combined archive morphologies
+    print(' ********** neuron-wise correlations')
+    neuron_corr={a:{} for a in np.unique(df['ARCHIVE'])}
+    for ar in neuron_corr.keys():
+        for f in np.unique(df[df.ARCHIVE==ar]['FNAME']):
+            neuron_corr[ar][f]=df[df.FNAME==f]['PARENT_DIA'].corr(df[df.FNAME==f]['DIAMETER'])
+        print('     archive',ar,round(np.mean(list(neuron_corr[ar].values())),3))
+initial_params = {key:value for (key,value) in features.items() if key != 'NODE_ORDER'}
 
-for connect in comp_list:
-    sep_data[connect] = {}; comb_data[connect] = {}
-    for i in comp_types:
-        sep_data[connect][i] = {}; comb_data[connect][i] = {}
-        for param in header.keys():
-            comb_data[connect][i][param] = []
-            if len(complete_dict.keys()) != len(header.keys()):
-                complete_dict[param] = []
-            for d1 in dirs:
-                if connect == comp_list[0]:
-                    complete_dict[param].extend(archive_dict[i][d1][param])       #no longer keeps order as files were read
-                if len(sep_data[connect][i].keys()) != len(dirs):                 #create new sep_data dictionaries if not present
-                    sep_data[connect][i][d1] = {}
-                sep_data[connect][i][d1][param] = []         
-                if connect == comp_list[-1]:                                      #fill in values after dictionaries created
-                    for num,val in enumerate(archive_dict[i][d1]['PAR_CONNECT']):
-                        sep_data['All'][i][d1][param].append(archive_dict[i][d1][param][num])
-                        comb_data['All'][i][param].append(archive_dict[i][d1][param][num])
-                        for cnum,ctype in enumerate(comp_list):                                         #'Initial'    - 0
-                            if val == cnum:                                                             #'BP_Child'   - 1
-                                sep_data[ctype][i][d1][param].append(archive_dict[i][d1][param][num])   #'Continuing' - 2
-                                comb_data[ctype][i][param].append(archive_dict[i][d1][param][num])
-
-'''Select parameters to analyze with Compartment Diameter'''
-#if additional features to plot, add plot labels below
-select_params = {'BRANCH_LEN': {'short':'TD','long':'Total Dendritic Length'},
-                 'NODE_DEGREE': {'short':'TB','long':'Terminal Branch Order'},
-                 'NODE_ORDER': {'short':'IB','long':'Initial Branch Order'},
-                 'PARENT_DIA': {'short':'PD','long':'Parent Diameter'},
-                 'PATH_DIS': {'short':'PS','long':'Path To Soma'},
-                 'PATH_TO_END': {'short':'LP','long':'Longest Path to Terminal'},
-                 'DIAMETER': {'short':'D','long':'Diameter'}}
-
-initial_params = {key:value for (key,value) in select_params.items() if key != 'NODE_ORDER'}
-
-'''Initial Plots and Parameter Analysis''' 
-for i in comp_types:
-    for param in select_params:
+####################################################3
+'''Initial Plots and Parameter Analysis'''
+for dtype in np.unique(df.TYPE): #apical vs basal
+    for param in features:
         if param != 'DIAMETER':
-            d1_data = []; label_list = []
-            plabel = select_params[param]['long']
+            compdf=df[(df.TYPE==dtype)]
+            plabel = features[param]['long']
             #title = i + ' ' + plabel + ' to Diameter'
-            title = i + ' Dendrites'
-            saving = 'All ' + i + ' ' + plabel + ' to Diameter'
-
-            '''Plot Parameters to Diameter'''
-            main_plot([comb_data['All'][i]], [param,'DIAMETER'], title, ax_titles = [plabel,'Diameter'], save_as = saving)
-            
-            '''Plot Parameters by Parent Connection'''
-            main_plot([comb_data['Continuing'][i],comb_data['BP_Child'][i],comb_data['Initial'][i]], [param,'DIAMETER'], title, ax_titles = [plabel,'Diameter'], labels = ['Continuing','Branch Children', 'Initial'], where = 'upper right', save_as = saving + ' PC')
+            title = dend_types[dtype] + ' Dendrites'
+            saving = subtitle+dend_types[dtype] + param+'_vs_Diam'
             
             '''Plot Parameters by Archive'''
+            arch_labels={}
+            drs_len=np.max([len(d1) for d1 in dirs])
             for d1 in dirs:
-                d1_data.append(sep_data['All'][i][d1])
-                temp,_ = pearsonr(sep_data['All'][i][d1][param],sep_data['All'][i][d1]['DIAMETER'])
-                rsquared = round(temp**2,4)
-                label = d1 + ' $R^2$ = ' + str(rsquared)
-                label_list.append(label)
-            main_plot(d1_data, [param,'DIAMETER'], title, ax_titles = [plabel,'Diameter'], labels = label_list, where = 'upper right', save_as = saving + ' A')
+                archdf=compdf[(compdf['ARCHIVE']==d1)]
+                temp,_ = pearsonr(archdf[param],archdf['DIAMETER'])
+                arch_labels[d1]=label = d1.ljust(drs_len) + ' $R^2$ = ' + str(round(temp**2,4) )
+            ct_labels={}
+            ct_len=np.max([len(ctnm) for ctnm in connect_dict.values()])
+            for ctnum in connect_dict.keys():
+                ctdf=compdf[(compdf['PAR_CONNECT']==ctnum)]
+                temp,_ = pearsonr(ctdf[param],ctdf['DIAMETER'])
+                ct_labels[ctnum]=connect_dict[ctnum].ljust(ct_len) + ' $R^2$ = ' + str(round(temp**2,4))                
+            if parameter_plots:
+                print('fig title',saving)
+                #Plot Parameters to Diameter
+                mfp.df_plot(compdf, [param,'DIAMETER'], title=title, ax_titles = [plabel,'Diameter'], save_as = saving)
+                
+                #Plot Parameters by Parent Connection
+                mfp.df_plot(compdf, [param,'DIAMETER'], labels=ct_labels, select_param='PAR_CONNECT',title=title, ax_titles = [plabel+' ($\mu$m)','Diameter'+' ($\mu$m)'], where = 'upper right', save_as = saving+'by_connect',ax_max=ax_max)
+                #plot parameters by archive
+                mfp.df_plot(compdf, [param,'DIAMETER'],labels=arch_labels, select_param='ARCHIVE',title=title, ax_titles = [plabel+' ($\mu$m)','Diameter'+' ($\mu$m)'],where='upper right', save_as = saving+'by_archive',ax_max=ax_max)
 
-'''Plot Feature Correlations'''
-regress = {}                      #setup regression dictionary
-for i in comp_types:
-    regress[i] = {}
-    
+####################################################3
+#plot histograms and test whether Rall's 3/2 power rule holds
+if len(hist_features):
+    histograms={};binset={}
+    for feat in hist_features:
+        if feat=='BRANCH_LEN':
+            log=True
+        else:
+            log=False
+        histograms[feat],binset[feat]=mfu.archive_histogram(df,dirs,dend_types,feat,features[feat]['long'],log=log)
+    for dtype in histograms[feat]:
+        saving = 'Histogram_'+subtitle+dend_types[dtype]
+        mfp.plot_hist_set (histograms,binset,dtype,features,title=None,save_as=saving)
+
+if rall_test:
+    saving = 'Rall_test_'+subtitle#+dend_types[ctnum]
+    parent_dia,sum_child_dia=mfp.Rall_plot(df,dirs,comp_list,save_as=saving)
+    child_dia32={ct:{ar:[] for ar in dirs} for ct in sum_child_dia.keys()}
+    parent_dia32={ct:{ar:[] for ar in dirs} for ct in parent_dia.keys()}
+    for ctnum in child_dia32.keys():
+        for ar in child_dia32[ctnum].keys():
+            child_dia32[ctnum][ar]=[cd**1.5 for clist in sum_child_dia[ctnum][ar] for cd in clist]
+            parent_dia32[ctnum][ar]=[cd**1.5 for clist in parent_dia[ctnum][ar] for cd in clist]
+            print(ctnum,ar,round((pearsonr(child_dia32[ctnum][ar],parent_dia32[ctnum][ar])[0])**2,3))
+####################################################3
+''' multiple linear regression 
+One method to improve this: loop through par2 in order of adjR - i.e., sort the dictionary '''
+improvement=0.001 #this is arbitrary.  Use one parameter model unless 2 parameter model increases adjusted R2 by this amount
+critical_CN =20 #condition numbers greater than this are worrisome
+regress = {i:{ct:[] for ct in comp_list[0:-1]} for i in dend_types.values()}
+adjr={}
+for ctnum in np.unique(df.TYPE):
+    ct=dend_types[ctnum]
     #Plot Correlation between 2 Features
-    for connect in comp_list:     #setup correlation data for each compartment type
-        param_comb = []; regress[i][connect] = []; select_data = {}
-        selection = initial_params if connect == 'Initial' else select_params
-        for p1 in selection:
-            
-            '''Multiple Regression for Diameter'''
-            if p1 != 'DIAMETER':  #runs statsmodels OLS (multiple) regression for single and paired parameters
-                model,predictions = ols_fit(comb_data[connect][i],p1,'DIAMETER') #be aware that single variable will still fit model
-                vals = regress_val(model)                                        
-                temp = [p1]
-                temp.extend(vals)
-                regress[i][connect].append(temp)
-                for p2 in selection:          #checks for duplicates to print only unique feature (2) combinations
-                    if p2 != 'DIAMETER' and p2 != p1 and str(p2 + ' + ' + p1) not in param_comb:
-                        param_comb.append(str(p1 + ' + ' + p2))
-                        model,predictions = ols_fit(comb_data[connect][i],[p1,p2],'DIAMETER')
-                        vals = regress_val(model)
-                        temp = [str(p1 + ' + ' + p2)]
-                        temp.extend(vals)
-                        regress[i][connect].append(temp)
-                 
-            select_data[p1] = comb_data[connect][i][p1]
+    for cn,connect in enumerate(comp_list[0:-1]):     #setup correlation data for each compartment type
+        comb_df=df[(df.PAR_CONNECT==cn) & (df.TYPE==ctnum)]
+        param_comb = []; select_data = {};adjR={}
+        selection = initial_params if connect == 'Initial' else features
+        indep_var=[s for s in selection.keys() if s != 'DIAMETER']
+        for pnum,par1 in enumerate(indep_var):
+            '''Multiple Regression for Diameter, runs statsmodels OLS (multiple) regression for parameters'''
+            model,predictions = mfu.ols_fit(comb_df,[par1],'DIAMETER',connect=connect,extended=False) #be aware that single variable will still fit model
+            vals = mfu.regress_val(model)
+            if len(predictions):  #if no predictions, that means model not significant
+                regress[ct][connect].append([par1]+vals)
+                adjR[par1]=model.rsquared_adj
+        print('FINISHED 1 par loop for', connect)
+        for par1,adjR1 in adjR.items():
+            for par2,adjR2 in adjR.items():
+                if par1 != par2 and str(par2 + ' + ' + par1) not in param_comb:
+                    #regression for pairs of parameters
+                    param_comb.append(str(par1 + ' + ' + par2))
+                    model,predictions = mfu.ols_fit(comb_df,[par1,par2],'DIAMETER',connect=connect)
+                    vals = mfu.regress_val(model)
+                    if len(predictions) and model.rsquared_adj-adjR1>improvement and model.rsquared_adj-adjR2>improvement and model.condition_number<critical_CN:  #if no predictions or adjR2 not improved by this amount, ignore                    
+                        regress[ct][connect].append([str(par1 + ' + ' + par2)]+vals)
+                    else:
+                        print('!!! not adding',connect,par1,'=',round(adjR1,4), 
+                              par2,'=',round(adjR2,4),'vs combined:',round(model.rsquared_adj,4),
+                              'condition',round(model.condition_number))
+        print('FINISHED 2 param loop for', connect) 
+        if corr_matrices:                
+            title = ''#ct + ' Dendrites'
+            saving = 'Corr_Matrix'+subtitle+dend_types[ctnum] +connect
+            #saving = ct + ' ' + connect + ' Feature Correlation'
+            mfp.corr(comb_df, selection, title, save_as = saving)
 
-        title = i + ' Dendrites'
-        saving = i + ' ' + connect + ' Feature Correlation'
-        corr(select_data, selection, title, save_as = saving)
+########### plot correlation by filename
 
+fname_set={ar:np.unique(df[df.ARCHIVE==ar].FNAME) for ar in np.unique(df.ARCHIVE)}
+if xcorr:
+    saving = 'Cross_corr'+subtitle
+    mean_xcorr,lags,decay=mfu.cross_corr(df,fname_set,dend_types)
+    mfp.plot_xcorr(mean_xcorr,lags,decay,xmax=600,save_as=saving)
+####################################################3
 #print regression data and sort by r-squared
+best_reg_params={i:{} for i in dend_types.values()}
 for i in regress:
     for connect in regress[i]:
-        print(i,connect)
-        print('Parameter','F-Stat','R-Squared','Condition Number','AIC','BIC')
-        regress[i][connect].sort(key=lambda x: x[2])
-        for test in regress[i][connect][::-1]:
-            print(test)
-
+        if len(regress[i][connect]):
+            print('FINAL RESULTS OF MULTI-REGRESION FOR', i,connect)
+            print('Parameter','F-Stat','R-Squared','Condition Number','AIC','BIC','R2 of model with Intercept')
+            regress[i][connect].sort(key=lambda x: x[2])
+            for test in regress[i][connect][::-1]:
+                print(test)
+                best_reg_params[i][connect]=sorted(regress[i][connect], key=lambda x: x[2],reverse=True)[0][0].split(' + ')
+        else:
+            print('NOTHING SIGNIFICANT FOR', i,connect)
+      
+####################################################3
 '''Separate Training and Testing Data'''
-seed = 14 
-file_copies = list(file_list)             #randomly separate files into training and testing sets
-random.Random(seed).shuffle(file_copies)
-split_files = split_seq(file_copies,2)
-training_files = split_files[0]
-testing_files = split_files[1]
+
+#to reproduce model fit results, need the original split_files
+#This loads the original training and testing files from the specified .npy file
+if args.train_test:
+    split_files=np.load(args.train_test, allow_pickle=True)
+    training_files = split_files[0]
+    testing_files = split_files[1]
+else:
+    file_copies = list(np.unique(df['FNAME']))             #randomly separate files into training and testing sets
+    random.Random(args.seed).shuffle(file_copies)
+    split_files = mfu.split_seq(file_copies,2)
+    training_files = split_files[0]
+    testing_files = split_files[1]
 
 print('train files',len(training_files))
 print('test files',len(testing_files))
 
-'''Choose which Features to Estimate Radius for Equations'''  #estimating radius as found in .swc morphologies
-test_params = {}      #'Apical' and 'Basal' are classification of compartment types within .swc morphologies
-test_params['Apical'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_TO_END'],'Continuing':['PARENT_DIA']}
-#test_params['Basal'] = {'Initial':['PARENT_DIA','BRANCH_LEN'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA']}
-test_params['Basal'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA','NODE_ORDER']}
-#test_params['Basal'] = {'Initial':['PARENT_DIA','NODE_DEGREE'],'BP_Child':['PARENT_DIA','NODE_ORDER'],'Continuing':['PARENT_DIA']}
+######### neuron wise correlations and cross-correlations   ###########
+fname_set={'train':training_files,'test':testing_files}
+if xcorr:
+   train_test_xcorr,train_test_lags,train_test_decay=mfu.cross_corr(df,fname_set,dend_types)
+   mfp.plot_xcorr(train_test_xcorr,train_test_lags,train_test_decay,xmax=None,save_as='')
 
-'''Create Equations (OLS Model) and Save Models to File'''
+'''Choose which Features to Estimate Radius for Equations'''  #estimating radius as found in .swc morphologies
+### This uses the best parameters from initial model fits,
+if len(test_params)==0: 
+    test_params=best_reg_params
+#test_params['Basal']['BP_Child']=best_reg_params['Basal']['BP_Child'] #for Purk, R2 slightly better for test and train
+#test_params=best_reg_params #0.083, 0.093, for str, test_i not defined!
+#test_params=best_reg_params #for hippo: apical: 034,0.51,0.19; basal: 0.50,0.43,0.22 - not as good!
+
+add_const=False
+'''Create Equations (OLS Model) and Save Models to File
+Ideally this should go into a function, input as two sets of filenames: train and test
+Then, could call this in a loop over archive, or do all archives'''
 pdict = {0:'Initial',1:'BP_Child',2:'Continuing'}   #original data (#'s) to dictionary organization (terms)
-cdict = {'3':'Basal','4':'Apical'}
-newrads = {fname:{} for fname in file_list}; newrads_i = {fname:{} for fname in file_list}
+newrads = {fname:{} for fname in np.unique(df['FNAME'])}; newrads_i = {fname:{} for fname in np.unique(df['FNAME'])}
 
 model_file = open('model.txt','w')
-models = {}; model_data = {}
-
-for i in comp_types:
-    models[i] = {'Initial':[],'Continuing':[],'BP_Child':[]} #saves model for initial, continuing, and branch point children
-    model_data[i] = {ts:{'fname':{},'node_type':{nd:{'pred':[],'org':[]} for nd in pdict.values()}} for ts in ['Train','Test','Test_i']}
-
+models = {}
+for ctnum in np.unique(df.TYPE): #apical vs basal
+    i=dend_types[ctnum]
+    models[i] = {tp: [] for tp in comp_list[0:-1]} #saves model for initial, continuing, and branch point children 
     #separate training and testing files in dictionary by file name
     #testing set split into test set including original diameters (Test_i)
-    for ts in ['Train','Test','Test_i']:
-        model_data[i][ts]['fname'] = {fn:{'pred':[],'org':[]} for fn in training_files} if ts == 'Train' else {fn:{'pred':[],'org':[]} for fn in testing_files}
-        
-    for connect in pdict.values():  
-        train_data = {p:[] for p in header.keys()} #temporarily hold feature values
-        for num,fname in enumerate(comb_data[connect][i]['FNAME']): 
-            for param in header.keys():
-                if fname in training_files:        #split data into training and testing sets to validate equations
-                    train_data[param].append(comb_data[connect][i][param][num])
-        
-        model,_ = ols_fit(train_data,test_params[i][connect],'DIAMETER')#,extended = True)
-        print(i, connect, model.params, 'R-Squared = ', model.rsquared_adj)
+    for cn,connect in pdict.items():  
+        comb_df=df[(df.PAR_CONNECT==cn) & (df.TYPE==ctnum)]
+        fname_dfs=[]
+        for fname in training_files:
+            fname_dfs.append(comb_df[comb_df.FNAME==fname])
+        train_df=pd.concat(fname_dfs, ignore_index=True)
+        model,_ = mfu.ols_fit(train_df,test_params[i][connect],'DIAMETER',connect=connect,add_const=add_const)#,extended = True)
+        if add_const:
+            test_params[i][connect]=test_params[i][connect]+['const']
+        print(' *****for Table ',i, connect, model.params, model.pvalues, 'R-Squared = ', model.rsquared_adj)
         models[i][connect] = {feature:model.params[num] for num,feature in enumerate(test_params[i][connect])}
 
         model_file.write(i + '\n')
@@ -407,80 +328,102 @@ for i in comp_types:
 
 model_file.close()
 
-'''Calculate New Predicted Values from Equations''' #includes updating Parent Diameters
-for line in complete_list:
-    #if line[header['FNAME']] == 'WT-1201MSN03.CNG_extract':
-    comp = line[header['CHILD']]; parent = line[header['PARENT']]; fname = line[header['FNAME']]
-    ctype = cdict[line[header['TYPE']]]; pcon = pdict[line[header['PAR_CONNECT']]]
-    newrad = 0; newrad_i = 0
-    for feature in test_params[ctype][pcon]:        
-        '''new predictions with updating parent radius'''
-        if feature == 'PARENT_DIA':                       #start with initial comps, with saved parent radius as soma val
-            if pcon == 'Initial':                   
-                newrad = newrad + models[ctype][pcon][feature] * line[header['PARENT_DIA']]
-                newrad_i = newrad_i + line[header['DIAMETER']]
-            else:                                         #if parent radius of any other comp, use updated radius
-                newrad = newrad + models[ctype][pcon][feature] * newrads[fname][parent]
-                newrad_i = newrad_i + models[ctype][pcon][feature] * newrads_i[fname][parent]
-                #newrad = newrad + newrads[fname][parent]
+'''Calculate New Predicted Values from Equations
+Calculations done recursively, starting from the initial segment
+Thus, only the radius of the soma is used, or
+radius of initial segment for that set of predictions
+If this is part of shape_shifter, then shouldn't be done here.
+Ideally, create a function to use model_file, OR 
+if that function already exists in shape_shifter, import the function here
+possibly loop over that function using the different archive models 
+Then, could call this in a loop over archive, or do all archives''' #includes updating Parent Diameters
 
-        else:                                             #if other feature value, find and update radius
-            newrad = newrad + models[ctype][pcon][feature] * line[header[feature]]
-            if parent != '1': #only applies additional features to predicted initial radii
-                newrad_i = newrad_i + models[ctype][pcon][feature] * line[header[feature]]
-        '''old predictions with non-updating parent radius'''
-        #newrad = newrad + models[ctype][pcon][feature] * complete_dict[feature][num]
-
-    newrads[fname][comp] = newrad
-    newrads_i[fname][comp] = newrad_i
-
-    '''Save Predicted Values by File and by Node Type'''
-    tlist = []
-    tlist.append('Train') if fname in training_files else tlist.extend(['Test','Test_i'])
-
-    #iterate through Train, Test, and Test_i dictionaries and save by file name and node type
-    for ts in tlist:
-        model_data[ctype][ts]['fname'][fname]['org'].append(line[header['DIAMETER']])   #save original width 
-        model_data[ctype][ts]['node_type'][pcon]['org'].append(line[header['DIAMETER']])
-        if ts != 'Test_i':
-            model_data[ctype][ts]['fname'][fname]['pred'].append(newrad)                #save new width w/o original initial
-            model_data[ctype][ts]['node_type'][pcon]['pred'].append(newrad)
-        else:
-            model_data[ctype][ts]['fname'][fname]['pred'].append(newrad_i)              #save new width w/ original initial
-            model_data[ctype][ts]['node_type'][pcon]['pred'].append(newrad_i)
-
-'''Calculate Correlation of Predicted to Original Diameter by File and by Node Type'''
-corr_data = {} #correlation data from values found in model_data
-for i in comp_types:
-    corr_data[i] = {ts:{'fname':{},'node_type':{nd:[] for nd in pdict.values()}} for ts in ['Train','Test','Test_i']}
+######## set up dictionaries to hold predictions
+if final_predictions:
+    model_data = {}
+    for ctnum in np.unique(df.TYPE): #apical vs basal
+        i=dend_types[ctnum]
+        model_data[i] = {ts:{'fname':{},'node_type':{nd:{'pred':[],'org':[]} for nd in pdict.values()}} for ts in ['Train','Test','Test_i']}
+        for ts in ['Train','Test','Test_i']:
+            model_data[i][ts]['fname'] = {fn:{'pred':[],'org':[]} for fn in training_files} if ts == 'Train' else {fn:{'pred':[],'org':[]} for fn in testing_files}
     
-    for tt in ['Train','Test','Test_i']: #calculate correlation within node type across files
-        corr_data[i][tt]['fname'] = {fname:[] for fname in training_files} if tt == 'Train' else {fname:[] for fname in testing_files}
-        for nt in pdict.values():
-            r_val,_ = pearsonr(model_data[i][tt]['node_type'][nt]['pred'],model_data[i][tt]['node_type'][nt]['org'])
-            corr_data[i][tt]['node_type'][nt].append(r_val**2)
-
-    for fname in file_list:  #calculate correlation within individual files 
+    for line in complete_list:
+        #if line[header['FNAME']] == 'WT-1201MSN03.CNG_extract':
+        comp = line[header['CHILD']]; parent = line[header['PARENT']]; fname = line[header['FNAME']]
+        ctype = dend_types[line[header['TYPE']]]; pcon = pdict[line[header['PAR_CONNECT']]]
+        newrad = 0; newrad_i = 0
+        for feature in test_params[ctype][pcon]:        
+            '''new predictions with updating parent radius'''
+            if feature == 'PARENT_DIA':                       #start with initial comps, with saved parent radius as soma val
+                if pcon == 'Initial':                   
+                    newrad = newrad + models[ctype][pcon][feature] * line[header['PARENT_DIA']]
+                    newrad_i = newrad_i + line[header['DIAMETER']]
+                else:                                         #if parent radius of any other comp, use updated radius
+                    newrad = newrad + models[ctype][pcon][feature] * newrads[fname][parent]
+                    newrad_i = newrad_i + models[ctype][pcon][feature] * newrads_i[fname][parent]
+                    #newrad = newrad + newrads[fname][parent]
+            elif feature=='const':
+                 newrad = newrad+models[ctype][pcon][feature]
+                 if pcon != 'Initial':
+                     newrad_i = newrad+models[ctype][pcon][feature]
+            else:                                             #if other feature value, find and update radius
+                newrad = newrad + models[ctype][pcon][feature] * line[header[feature]]
+                if parent != '1': #only applies additional features to predicted initial radii
+                    newrad_i = newrad_i + models[ctype][pcon][feature] * line[header[feature]]
+    
+        newrads[fname][comp] = newrad
+        newrads_i[fname][comp] = newrad_i
+    
+        '''Save Predicted Values by File and by Node Type'''
         tlist = []
         tlist.append('Train') if fname in training_files else tlist.extend(['Test','Test_i'])
+    
+        #iterate through Train, Test, and Test_i dictionaries and save by file name and node type
         for ts in tlist:
-            r_val,_ = pearsonr(model_data[i][ts]['fname'][fname]['pred'],model_data[i][ts]['fname'][fname]['org'])
-            corr_data[i][ts]['fname'][fname].append(r_val**2)
-
-    '''Plot Predicted to Original Diameter Values and Correlations'''
-    print(i, ' average',' stdev')
-    t_labels = {}; to_plot = {}
-    for pt in ['Train','Test','Test_i']:
-        to_plot[pt] = {'org':[],'pred':[]}
-        for fname in model_data[i][pt]['fname']:             #send single averaged R2 (and stdev) across all files to plot
-            to_plot[pt]['org'].extend(model_data[i][pt]['fname'][fname]['org'])
-            to_plot[pt]['pred'].extend(model_data[i][pt]['fname'][fname]['pred'])
-        ave = np.average(list(flatten(corr_data[i][pt]['fname'].values()))); std = np.std(list(flatten(corr_data[i][pt]['fname'].values())))
-        t_labels[pt] = '$R^2$ = ' + str(round(ave,2)) + ' +/- ' + str(round(std,2))
+            model_data[ctype][ts]['fname'][fname]['org'].append(line[header['DIAMETER']])   #save original width
+            model_data[ctype][ts]['node_type'][pcon]['org'].append(line[header['DIAMETER']])
+            if ts != 'Test_i':
+                model_data[ctype][ts]['fname'][fname]['pred'].append(newrad)                #save new width w/o original initial
+                model_data[ctype][ts]['node_type'][pcon]['pred'].append(newrad)
+            else:
+                model_data[ctype][ts]['fname'][fname]['pred'].append(newrad_i)              #save new width w/ original initial
+                model_data[ctype][ts]['node_type'][pcon]['pred'].append(newrad_i)
+    
+    '''Calculate Correlation of Predicted to Original Diameter by File and by Node Type'''
+    corr_data = {} #correlation data from values found in model_data
+    for i in model_data.keys():
+        corr_data[i] = {ts:{'fname':{},'node_type':{nd:[] for nd in pdict.values()}} for ts in ['Train','Test','Test_i']}
         
-        print(pt,'By File',ave,std)
-        print(corr_data[i][pt]['node_type'])
-    title = i + ' Dendrites'
-    #additions = 'Average $R^2$ = ' + ave_r
-    saving = i + ' Predicted Diameter'
-    main_plot([to_plot['Train'],to_plot['Test'],to_plot['Test_i']], ['org','pred'], title, ax_titles = ['Original Diameter ($\mu$m)','Predicted Diameter ($\mu$m)'], labels = ['Train         ' + t_labels['Train'],'Test          ' + t_labels['Test'],'Test + In. ' + t_labels['Test_i']], where = 'lower right', save_as=saving)# , add = additions)
+        for tt in ['Train','Test','Test_i']: #calculate correlation within node type across files
+            corr_data[i][tt]['fname'] = {fname:[] for fname in training_files} if tt == 'Train' else {fname:[] for fname in testing_files}
+            for nt in pdict.values():
+                r_val,_ = pearsonr(model_data[i][tt]['node_type'][nt]['pred'],model_data[i][tt]['node_type'][nt]['org'])
+                corr_data[i][tt]['node_type'][nt].append(r_val**2)
+    
+        for fname in np.unique(df['FNAME']):  #calculate correlation within individual files 
+            tlist = []
+            tlist.append('Train') if fname in training_files else tlist.extend(['Test','Test_i'])
+            for ts in tlist:
+                r_val,_ = pearsonr(model_data[i][ts]['fname'][fname]['pred'],model_data[i][ts]['fname'][fname]['org'])
+                corr_data[i][ts]['fname'][fname].append(r_val**2)
+    
+        '''Plot Predicted to Original Diameter Values and Correlations'''
+        print(i, ' average',' stdev')
+        t_labels = {}; to_plot = {}
+        for pt in ['Train','Test','Test_i']:
+            to_plot[pt] = {'org':[],'pred':[]}
+            for fname in model_data[i][pt]['fname']:             #send single averaged R2 (and stdev) across all files to plot
+                to_plot[pt]['org'].extend(model_data[i][pt]['fname'][fname]['org'])
+                to_plot[pt]['pred'].extend(model_data[i][pt]['fname'][fname]['pred'])
+            ave = np.average(list(mfu.flatten(corr_data[i][pt]['fname'].values()))); std = np.std(list(mfu.flatten(corr_data[i][pt]['fname'].values())))
+            t_labels[pt] = '$R^2$ = ' + str(round(ave,2)) + ' +/- ' + str(round(std,2))
+            
+            print(pt,'By File',ave,std)
+            print(corr_data[i][pt]['node_type'])
+        title = ''#i + ' Dendrites'
+        #additions = 'Average $R^2$ = ' + ave_r
+        saving = 'Predict'+subtitle+i
+        mfp.main_plot([to_plot['Train'],to_plot['Test'],to_plot['Test_i']], ['org','pred'], title, 
+                  ax_titles = ['Original Diameter ($\mu$m)', 'Predicted Diameter ($\mu$m)'], 
+                  labels = ['Train         ' + t_labels['Train'],'Test          ' + t_labels['Test'],'Test + In. ' + t_labels['Test_i']],
+                  where = legend_loc, save_as=saving,ax_max=ax_max)# , add = additions)
