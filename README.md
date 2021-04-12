@@ -45,7 +45,7 @@ run morph_feature_extract.py to calculate feature values from .swc morphology fi
 
   - Input:
   ```
-  python2 morph_feature_extract.py --path /path/to/folder_with_swc_files
+  python2 morph_feature_extract.py --path /path/to/folder_with_swc_files 
   ```
   - Output:
   - filename_extract.txt
@@ -57,8 +57,11 @@ run morph_feature_analysis.py to compare features and create model equations
 
   - Input:
   ```
-  python3 morph_feature_analysis.py --path /path/to/folder_with_swc_extract_files
+  python3 morph_feature_analysis.py --path /path/to/folder_with_swc_extract_files --seed integer --train_test npy_file
   ```
+  - --seed specifies the random seed to split the files into training and testing sets, to allow reproducibility
+  - --train_test allows you to specify the npy file with dictionary of training and testing files to reproduce the results in Reed and Blackwell 2021
+  
   - Output:
   - multiple feature and correlation plots (.png), model.txt
   
