@@ -24,49 +24,38 @@
 #George Mason University
 #Zhi Cheng Wu
 #Feb. 27, 2020
+#simplified by Avrama Blackwell
+#April 15, 2021
 
 import re
 
 def create_dict(pythonfile):
     newFile = open(pythonfile,'r')
     content = newFile.readlines() #content now list of lines
-    final_dict = {}
-    fail = False
-    temp_dict = {}
     report = 0
-    header = None
-    row = None
-    for row in content:
+    header = []
+    for linenum,row in enumerate(content):
         if row[0] == '*' and row[1] == 'C':
         #naming system of dict dynamic
             header = row.split('; ')
-            #if '*CHILD' in header:
             header[0] = 'CHILD'
-            for categories in header:
-                temp_dict[categories] = []
+            final_dict={cat:[] for cat in header}
+            startline=linenum+1
+            print(pythonfile,'linenumber that begins data',startline)
             break
-    final_dict = temp_dict #save point of category header keys
-    for line in content:
-        fail = False
-        row = re.findall(r"[-+]?\d*\.\d+|\d+", line)
-        count = 0
-        for categories in header:
-            #first line of content has the header containing string to label the dict keys
-            #using try in order to conserve processing power to determine whether
-            try:
-                temp_dict[categories].append(float(row[count]))
-                count = count+1
-            except:
-                fail = True
-        #if theres a point where a data value is missing/incorrectly named/extra data value in one line
-        if fail == False:
-            final_dict = temp_dict
-        else:
-            temp_dict = final_dict
+    if len(header)==0:
+        print("!!!!!! Possible error in data set format. No header row beginning *CHILD")        
+    for kk,line in enumerate(content[startline:]):
+        row = re.findall(r"[-+]?\d*\.\d+|\d+", line) #could also use line.split()
+        if len(row)!=len(header):
+            print("!!!!!! Possible error in data set format.  Too many or too few numbers in the row\n",row)            
             report += 1
-    if report > len(header):
-        print("Possible error in data set format.")
-    return temp_dict
+        else:
+            for count,categories in enumerate(header):
+                final_dict[categories].append(float(row[count]))
+    if report:
+        print("!!!!!!!!!!!! Possible error in data set format.", report,'lines are wrong length')
+    return final_dict
 def main():
     temp = create_dict('Adol-20100419cell1.CNG_extract.txt')
     print(temp)
