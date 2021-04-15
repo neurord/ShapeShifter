@@ -404,7 +404,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 print('Condensed Compartments : Created ' + filename + '_condensed.p')
 
         if (type1 =="radii"):
-                read_model = open(h.model,'r').readlines() #read model file and organize by node-type 
+                read_model = open(h.model,'r').readlines() #read model file and organize by node-type
                 models = {}                                #save as dictionary for feature name (key) and coefficient (value)
                 for line in read_model:
                         line = line.split()
@@ -419,14 +419,13 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                         elif len(line) == 2: 
                                 models[comp][connect][line[0]] = float(line[1])
 
-                
                 feature_file = filename + '_extract.txt'
                 features = create_dict(feature_file)
                 for feature in features.keys():                    #remove trailing '\n' from final feature name
                         if '\n' in feature:
                                 new_key = feature.strip('\n')
                                 features[new_key] = features.pop(feature)
-                                
+
                 soma_count = 0
                 newrads = {}; newrads_i = {}
                 pdict = {0:'Initial',1:'BP_Child',2:'Continuing'}  #original data (#'s) to dictionary organization (terms)
@@ -445,12 +444,18 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                         if feature == 'PARENT_DIA':              
                                                 if pcon == 'Initial':
                                                         newrad = newrad + models[ctype][pcon][feature] * (features['PARENT_RAD'][new_num]*2)
-                                                        newrad_i = newrad_i + (features['RADIUS'][new_num]*2)
+                                                        newrad_i = features['RADIUS'][new_num]*2
                                                 else:
                                                         newrad = newrad + models[ctype][pcon][feature] * newrads[line[PARENT]]
                                                         newrad_i = newrad_i + models[ctype][pcon][feature] * newrads_i[line[PARENT]]
+                                        elif feature=='const':
+                                                newrad=newrad+models[ctype][pcon][feature]
+                                                if pcon != 'Initial':
+                                                     newrad_i=newrad_i+models[ctype][pcon][feature]   
                                         else:                              
                                                 newrad = newrad + models[ctype][pcon][feature] * features[feature][new_num]
+                                                if pcon=='Initial':
+                                                        newrad_i=features['RADIUS'][new_num]*2
                                                 if not '_1' in line[PARENT]:
                                                         newrad_i = newrad_i + models[ctype][pcon][feature] * features[feature][new_num]
                                 newrads[line[CHILD]] = newrad
