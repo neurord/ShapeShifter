@@ -2,18 +2,9 @@
 
 #use available parameters from our morph comparisons
 #convert to SI
-#for Lindroos cell
-'''
-RM = 8.0 #ohm-m2 #Lindroos used 8, but could go as low as 1 to account for Kir
-RA = 0.15 #
-CM = 0.01 #F/m^2 = 1 uF/cm^2 
-
-#Golding Cell-3 (ri06) Params, also used for MSN, CA1, and Purk
-'''
-RM = 1.6 #ohm-cm2
-RA = 1.98  # ohm-m
-CM = 0.0186 #F/m2
-
+#for Lindroos cell #ohm-m2 #Lindroos used 8, but could go as low as 1 to account for Kir
+params={'Lindroos': {'RM':8.0,'RA':0.15,'CM':0.01}, #F/m^2 = 1 uF/cm^2 
+        'default':{'RM': 1.6,'RA': 1.98,'CM' :0.0186}} #F/m2
 
 synparams={'channame':'ampa','tau1':1e-3,'tau2':5e-3,'Erev':-5e-3,'gbar':1e-9}
 #may need up to 5e-9
