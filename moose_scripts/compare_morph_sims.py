@@ -59,8 +59,8 @@ def main_plot(data, var, colors,title = '', ax_titles = None, labels = None, sav
         plt.show()
     return plt
         
-def show_curvefit(sim_data,popt,rkey,start,comp='somaVm',title=None):
-    estimate = exp2(np.array(sim_data[rkey]['time'][start:]),*popt) #send in all curve_fit params for estimate
+def show_curvefit(func,sim_data,popt,rkey,start,comp='somaVm',title=None):
+    estimate = func(np.array(sim_data[rkey]['time'][start:]),*popt) #send in all curve_fit params for estimate
     #show result of curve fit
     plt.figure()
     if title:
@@ -72,22 +72,25 @@ def show_curvefit(sim_data,popt,rkey,start,comp='somaVm',title=None):
     #save_png(plt,'check_eq.png')
     #plt.close()
 
+_FUNCTIONS={
+    'exp1': exp1,
+    'exp2': exp2}
 ####### Uncomment the root file name (pattern) and synapse compartment of one of these #########
 #only saving syntau and dVsyn in soma for one of the synapses
-#pattern = 'Purkinje-slice-ageP35-1.CNG_*' #matches quite well to pred+in.  Looks very similar to original plot (shape, not values)
-#syn=['12_3']  #synaptic input ,,'1342_3'
-pattern = 'WT-0201MSN03.CNG_*' #Lai striatum - matches quite well, including synaptic input
-syn=['19_3']#,'35_3'
+pattern = 'Purkinje-slice-ageP35-1.CNG_*' #matches quite well to pred+in.  Looks very similar to original plot (shape, not values)
+syn=['12_3']  #synaptic input ,,'1342_3',
+#pattern = 'WT-0201MSN03.CNG_*' #Lai striatum - matches quite well, including synaptic input
+#syn=['19_3']#,'35_3',
 #pattern = 'WT-P270-20-14ak.CNG_*' #Lindroos striatum - 
-#syn=['194_3']#,'35_3'
-#pattern = 'ri06_mod.CNG_*' #Golding hippocampus - good fit, good synapse.  increase Gbar to 10e-9
-#syn=['31_4'] #,'3400_3'
-#pattern = 'Adol-20100419cell1.CNG_*' #Groen - hippocampus - good fit, good synapse. increase Gbar to 10e-9
-#syn=['112_3'] #response is ~0.1 mV '32_3',
+#syn=['35_3']#'194_3',
+#pattern = 'ri06_mod.CNG_*' #Golding hippocampus - good fit, good synapse.  
+#syn=['31_4']#,'3400_3'] #
+#pattern = 'Adol-20100419cell1.CNG_*' #Groen - hippocampus - good fit, good synapse. 
+#syn=['32_3']#,'112_3'] #response is ~0.1 mV 
 ### to fit to single exponential, change to 'exp1'
 fit='exp2'
 param_bounds = ([0,0,-100,-100,-100],[1000,1000, 100,100,100])#msec,msec,mV,mV,mV
-showfit=False
+showfit=True
 
 #parameters to control plotting, specific to the set of simulations, but same for all file names
 inj_set={'short' : '0.001', 'long': '0.8'}
@@ -118,18 +121,17 @@ for stimtype,stim in stim_set.items():
         if stimtype=='short': #determine time constants
             start = np.argmax(sim_data[rkey]['somaVm']) #point at which is highest voltage
             #print('exp start', start,sim_data[rkey]['time'][start])
-            #curve fit to single tau with no constraints on parameters
-            popt,pcov = optimize.curve_fit(exp1,sim_data[rkey]['time'][start:],sim_data[rkey]['somaVm'][start:])
             if fit=='exp2':
                 #curve fit to double tau, needs parameter constraints
                 popt,pcov = optimize.curve_fit(exp2,sim_data[rkey]['time'][start:],sim_data[rkey]['somaVm'][start:],bounds=param_bounds,maxfev=5000)
                 measures['tau'][rkey]=max(popt[0],popt[1])
                 measures['tau2'][rkey]=min(popt[0],popt[1])
             else:
+                popt,pcov = optimize.curve_fit(exp1,sim_data[rkey]['time'][start:],sim_data[rkey]['somaVm'][start:])
                 measures['tau'][rkey] = popt[0]
             fit_cov[rkey]=pcov[0,0]
             if showfit:
-                show_curvefit(sim_data,popt,rkey,start)
+                show_curvefit(_FUNCTIONS[fit],sim_data,popt,rkey,start)
         elif stimtype=='long': #determine deltaV (proportional to input resistance)
             delay = 50e-3
             pt = np.max(np.where(np.array(sim_data[rkey]['time'])<delay))
@@ -149,12 +151,16 @@ for stimtype,stim in stim_set.items():
                     add_to_key=''
                 else:
                     add_to_key='_'+comp
-                popt,pcov = optimize.curve_fit(exp2,sim_data[rkey]['time'][peakpt:],sim_data[rkey][comp][peakpt:],bounds=param_bounds,maxfev=5000)
+                if fit=='exp2':
+                    popt,pcov = optimize.curve_fit(exp2,sim_data[rkey]['time'][peakpt:],sim_data[rkey][comp][peakpt:],bounds=param_bounds,maxfev=5000)
+                    measures['syntau2'+add_to_key][rkey]=min(popt[0],popt[1])
+                    measures['syntau'+add_to_key][rkey]=max(popt[0],popt[1])
+                else:
+                    popt,pcov = optimize.curve_fit(exp1,sim_data[rkey]['time'][peakpt:],sim_data[rkey][comp][peakpt:])
+                    measures['syntau'+add_to_key][rkey]=popt[0]
                 measures['dVsyn'+add_to_key][rkey]=peakV-baseV
-                measures['syntau'+add_to_key][rkey]=max(popt[0],popt[1])
-                measures['syntau2'+add_to_key][rkey]=min(popt[0],popt[1])
                 if showfit:
-                    show_curvefit(sim_data,popt,rkey,peakpt,comp=comp,title=rkey+add_to_key)
+                    show_curvefit(_FUNCTIONS[fit],sim_data,popt,rkey,peakpt,comp=comp,title=rkey+add_to_key)
 
     #plot all morphologies for one type of stimulation
     title=fname.split('.')[0]
