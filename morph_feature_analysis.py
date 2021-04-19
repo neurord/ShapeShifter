@@ -72,15 +72,21 @@ parser.add_argument("--path", type = str)
 parser.add_argument("--seed",type=int, default=14)
 parser.add_argument("--train_test",type=str)
 args = parser.parse_args()                      
-path = args.path                                
+path = args.path
 
-'''Locates Archive Data'''
-root, dirs, files = list(os.walk(path))[0]           #all CNG_extract.txt files require identical parameters and length data
+import glob
+if not len(glob.glob(path)):  #if the path doesn't exist
+    dirs=glob.glob(path+'*')  #use the wildcard character
+    root=os.path.dirname(dirs[0])+'/'
+    dirs=[os.path.basename(d1) for d1 in dirs]
+else:
+    '''Locates Archive Data'''
+    root, dirs, files = list(os.walk(path))[0]           #all CNG_extract.txt files require identical parameters and length data
 if len(dirs) == 0:
-    if os.path.basename(path) == '':
+    if os.path.basename(path) == '':  #if single repo specified with no subdirectories
         path = root.rstrip('/')                      #fix for trailing '/' in path
-    dirs = [os.path.basename(path)]
-    root = os.path.dirname(path) + '/'
+    dirs = [os.path.basename(path)]   #then, the single repo is the same as the set of subdirectories
+    root = os.path.dirname(path) + '/'  #and the root is the full path of the repo
 subtitle=root.rstrip('/')+'_'
 df,complete_list,header=mfu.read_morphologies(root,dirs)
 nodes={ar:[] for ar in np.unique(df.ARCHIVE)}
@@ -91,23 +97,18 @@ for ar in np.unique(df.ARCHIVE):
         nodes[ar].append(len(fdf))
     print(subtitle, ar, 'mean nodes', np.mean(nodes[ar]))
 
-test_params = {}      #'Apical' and 'Basal' are classification of compartment types within .swc morphologies
-#these features together with the .npy files will allow reproducing the predictive equations reported in the manuscript
+#Some parameters for the graphs
 if 'Hippocampus' in path.split('/'):
-    test_params['Apical'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_TO_END'],'Continuing':['PARENT_DIA']} #Hippo Apical
-    test_params['Basal'] = {'Initial':['PARENT_DIA','BRANCH_LEN'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA']} #Hippo Basal
     ax_max=10
     legend_loc='lower right'
 elif 'Cerebellum' in path.split('/'):
-    test_params['Basal'] = {'Initial':['PARENT_DIA','PATH_TO_END'],'BP_Child':['PARENT_DIA','PATH_DIS'],'Continuing':['PARENT_DIA']} #Purkinje
     ax_max=8
     legend_loc='upper right'
 elif 'Basal_Ganglia' in path.split('/'):
-    test_params['Basal'] = {'Initial':['PARENT_DIA','NODE_DEGREE'],'BP_Child':['PARENT_DIA','NODE_ORDER'],'Continuing':['PARENT_DIA']} #0.09,0.11,0.1
     ax_max=6
     legend_loc='upper right'
 else:
-    print('new archive, test_params will be determined from best model fit')
+    print('new archive')
 
 #mfu.compare_EM(df,path)
 ################# correlations of various types using dictionaries
@@ -199,45 +200,58 @@ if rall_test:
 ####################################################3
 ''' multiple linear regression 
 One method to improve this: loop through par2 in order of adjR - i.e., sort the dictionary '''
-improvement=0.001 #this is arbitrary.  Use one parameter model unless 2 parameter model increases adjusted R2 by this amount
+improvement=0.02 #this is arbitrary.  Use one parameter model unless 2 parameter model increases adjusted R2 by this amount
 critical_CN =20 #condition numbers greater than this are worrisome
-regress = {i:{ct:[] for ct in comp_list[0:-1]} for i in dend_types.values()}
+regress = {dend_types[ctnum]:{ct:[] for ct in comp_list[0:-1]} for ctnum in np.unique(df.TYPE)}
 adjr={}
 for ctnum in np.unique(df.TYPE):
     ct=dend_types[ctnum]
     #Plot Correlation between 2 Features
     for cn,connect in enumerate(comp_list[0:-1]):     #setup correlation data for each compartment type
         comb_df=df[(df.PAR_CONNECT==cn) & (df.TYPE==ctnum)]
-        param_comb = []; select_data = {};adjR={}
-        selection = initial_params if connect == 'Initial' else features
-        indep_var=[s for s in selection.keys() if s != 'DIAMETER']
-        for pnum,par1 in enumerate(indep_var):
+        adjR={}
+        if connect == 'Initial':
+            indep_var={s:v for s,v in features.items() if s != 'DIAMETER' and s != 'NODE_ORDER'}
+        else:
+            indep_var={s:v for s,v in features.items() if s != 'DIAMETER'}
+        for pnum,par1 in enumerate(indep_var.keys()):
             '''Multiple Regression for Diameter, runs statsmodels OLS (multiple) regression for parameters'''
-            model,predictions = mfu.ols_fit(comb_df,[par1],'DIAMETER',connect=connect,extended=False) #be aware that single variable will still fit model
+            model,predictions = mfu.ols_fit(comb_df,[par1],'DIAMETER',connect=connect,extended=False,add_const=True) #be aware that single variable will still fit model
             vals = mfu.regress_val(model)
-            if len(predictions):  #if no predictions, that means model not significant
-                regress[ct][connect].append([par1]+vals)
-                adjR[par1]=model.rsquared_adj
-        print('FINISHED 1 par loop for', connect)
-        for par1,adjR1 in adjR.items():
-            for par2,adjR2 in adjR.items():
-                if par1 != par2 and str(par2 + ' + ' + par1) not in param_comb:
-                    #regression for pairs of parameters
-                    param_comb.append(str(par1 + ' + ' + par2))
-                    model,predictions = mfu.ols_fit(comb_df,[par1,par2],'DIAMETER',connect=connect)
-                    vals = mfu.regress_val(model)
-                    if len(predictions) and model.rsquared_adj-adjR1>improvement and model.rsquared_adj-adjR2>improvement and model.condition_number<critical_CN:  #if no predictions or adjR2 not improved by this amount, ignore                    
-                        regress[ct][connect].append([str(par1 + ' + ' + par2)]+vals)
-                    else:
-                        print('!!! not adding',connect,par1,'=',round(adjR1,4), 
-                              par2,'=',round(adjR2,4),'vs combined:',round(model.rsquared_adj,4),
-                              'condition',round(model.condition_number))
+            regress[ct][connect].append([par1]+vals)
+            adjR[par1]=model.rsquared_adj
+        adjR=dict(sorted(adjR.items(),key=lambda item: item[1],reverse=True))
+        print('FINISHED 1 par loop for', connect, adjR)
+        par1='PARENT_DIA'; adjR1=adjR[par1]; bestR2=adjR1
+        del adjR['PARENT_DIA']
+        for par2,adjR2 in adjR.items():
+            #regression for pairs of parameters - use 2nd parameter if pearonsr to diameter is higher than pearsonsR to parent_dia
+            model,predictions = mfu.ols_fit(comb_df,[par1,par2],'DIAMETER',connect=connect,add_const=True)
+            vals = mfu.regress_val(model)
+            if model.rsquared_adj-max(adjR1,adjR2)>improvement:
+                regress[ct][connect].append([str(par1 + ' + ' + par2)]+vals)
+                bestR2=model.rsquared_adj
+            else:
+                print('PARAMETER PAIRS: not adding',connect,par1,'=',round(adjR1,4), 
+                      par2,'=',round(adjR2,4),'vs combined:',round(model.rsquared_adj,4),
+                      'condition',round(model.condition_number))
+        # Additional loop to see if parameter combinatinos not using parent diameter are better
+        for kk,(par1,adjR1) in enumerate(adjR.items()):
+            for par2,adjR2 in list(adjR.items())[kk+1:]:
+                model,predictions = mfu.ols_fit(comb_df,[par1,par2],'DIAMETER',connect=connect,add_const=True)
+                vals = mfu.regress_val(model)
+                if model.rsquared_adj-max(adjR1,adjR2)>improvement and model.rsquared_adj> bestR2:
+                    regress[ct][connect].append([str(par1 + ' + ' + par2)]+vals)
+                    bestR2=model.rsquared_adj
+                else:
+                    print(connect,'Not adding addtl PARAMETER PAIRS:', par1, 'R2=',round(adjR1,3),
+                          par2,'R2=',round(adjR2,3), 'modelR2',round(model.rsquared_adj,4))
         print('FINISHED 2 param loop for', connect) 
         if corr_matrices:                
             title = ''#ct + ' Dendrites'
             saving = 'Corr_Matrix'+subtitle+dend_types[ctnum] +connect
             #saving = ct + ' ' + connect + ' Feature Correlation'
-            mfp.corr(comb_df, selection, title, save_as = saving)
+            mfp.corr(comb_df, indep_var, title, save_as = saving)
 
 ########### plot correlation by filename
 
@@ -259,7 +273,8 @@ for i in regress:
                 print(test)
                 best_reg_params[i][connect]=sorted(regress[i][connect], key=lambda x: x[2],reverse=True)[0][0].split(' + ')
         else:
-            print('NOTHING SIGNIFICANT FOR', i,connect)
+            print('NOTHING SIGNIFICANT FOR', i,connect, 'using PARENT_DIA')
+            best_reg_params[i][connect]=['PARENT_DIA']
       
 ####################################################3
 '''Separate Training and Testing Data'''
@@ -286,13 +301,7 @@ if xcorr:
    train_test_xcorr,train_test_lags,train_test_decay=mfu.cross_corr(df,fname_set,dend_types)
    mfp.plot_xcorr(train_test_xcorr,train_test_lags,train_test_decay,xmax=None,save_as='')
 
-'''Choose which Features to Estimate Radius for Equations'''  #estimating radius as found in .swc morphologies
-### This uses the best parameters from initial model fits,
-if len(test_params)==0: 
-    test_params=best_reg_params
-#test_params['Basal']['BP_Child']=best_reg_params['Basal']['BP_Child'] #for Purk, R2 slightly better for test and train
-#test_params=best_reg_params #0.083, 0.093, for str, test_i not defined!
-#test_params=best_reg_params #for hippo: apical: 034,0.51,0.19; basal: 0.50,0.43,0.22 - not as good!
+test_params=best_reg_params
 
 add_const=False
 '''Create Equations (OLS Model) and Save Models to File
@@ -301,7 +310,7 @@ Then, could call this in a loop over archive, or do all archives'''
 pdict = {0:'Initial',1:'BP_Child',2:'Continuing'}   #original data (#'s) to dictionary organization (terms)
 newrads = {fname:{} for fname in np.unique(df['FNAME'])}; newrads_i = {fname:{} for fname in np.unique(df['FNAME'])}
 
-model_file = open('model.txt','w')
+model_file = open(subtitle+'model.txt','w')
 models = {}
 for ctnum in np.unique(df.TYPE): #apical vs basal
     i=dend_types[ctnum]
@@ -357,20 +366,20 @@ if final_predictions:
             if feature == 'PARENT_DIA':                       #start with initial comps, with saved parent radius as soma val
                 if pcon == 'Initial':                   
                     newrad = newrad + models[ctype][pcon][feature] * line[header['PARENT_DIA']]
-                    newrad_i = newrad_i + line[header['DIAMETER']]
+                    newrad_i = line[header['DIAMETER']]
                 else:                                         #if parent radius of any other comp, use updated radius
                     newrad = newrad + models[ctype][pcon][feature] * newrads[fname][parent]
                     newrad_i = newrad_i + models[ctype][pcon][feature] * newrads_i[fname][parent]
-                    #newrad = newrad + newrads[fname][parent]
             elif feature=='const':
                  newrad = newrad+models[ctype][pcon][feature]
                  if pcon != 'Initial':
                      newrad_i = newrad+models[ctype][pcon][feature]
             else:                                             #if other feature value, find and update radius
                 newrad = newrad + models[ctype][pcon][feature] * line[header[feature]]
+                if pcon=='Initial':
+                    newrad_i=line[header['DIAMETER']]
                 if parent != '1': #only applies additional features to predicted initial radii
                     newrad_i = newrad_i + models[ctype][pcon][feature] * line[header[feature]]
-    
         newrads[fname][comp] = newrad
         newrads_i[fname][comp] = newrad_i
     

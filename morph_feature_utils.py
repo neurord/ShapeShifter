@@ -66,22 +66,9 @@ def ols_fit(data,xlabel,ylabel,extended = False,connect='',add_const=False):
         model32=sm.OLS(Y32,X32).fit()
         print('$$$$$$$$$$$$$$$ using 3/2 power for',connect,xlabel,
                   round(model32.rsquared_adj,3),'VERSUS',round(model.rsquared_adj,3))            
-    XC = sm.add_constant(X)
-    modelC = sm.OLS(Y,XC).fit()
-    if len(xlabel)==1:
-        if modelC.f_pvalue > 0.05:
-            print('@@@@@@@@@@@@@',connect, xlabel,'NOT SIGNIFICANT !!!!!!!!!!!!!!')
-            if extended:
-                print(model.summary())     #by default no extended output printed within function
-                print('THIS ONE MORE RELEVANT:::', modelC.summary())
-            return model,[]
-        else:
-            print ('@@@ Connect',connect,'Indep', xlabel,'no Const',model.f_pvalue, model.pvalues.iloc[0],model.rsquared_adj,
-                   '   \nwith Const',modelC.f_pvalue,modelC.pvalues.iloc[0],modelC.rsquared_adj)
-            if extended:
-                print(model.summary())     #by default no extended output printed within function
-            return model,model.predict(X)
-    elif add_const:
+    if add_const:
+        XC = sm.add_constant(X)
+        modelC = sm.OLS(Y,XC).fit()
         return modelC,modelC.predict(XC)
     else:
         return model,model.predict(X)
@@ -145,7 +132,7 @@ def read_morphologies(root,dirs):
     '''Read in Morphology Data in Folder with Single/Multiple Archive(s)'''
     for d1 in dirs:                                      #can accept individual archives or multiple archives within single directory           
         fullpath = root + d1 + '/*CNG_extract.txt'                      
-        print('Working on Directory : ', str(d1))
+        print('Working on Directory : ', str(d1), 'files',fullpath)
         for fname in glob.glob(fullpath):                               #locates and loops through _extract files in path
             temp_name =  os.path.basename(fname).split('.txt')[0]
             with open(fname) as f:
