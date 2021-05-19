@@ -1,4 +1,6 @@
 *~
-*.p
+*.tiff
 *.png
 *.pyc
+test_files/
+striatum_TL_LP/
