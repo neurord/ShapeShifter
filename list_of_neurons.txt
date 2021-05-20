@@ -103,3 +103,9 @@ Cerebellum
 	AZ_Adult3_10CELLS-7.CNG.swc
 	AZ_Adult3_10CELLS-8.CNG.swc
 	AZ_Adult3_10CELLS-9.CNG.swc
+
+Golding
+	ri06_mod.CNG.swc
+
+Lindroos
+	WT-P270-20-14ak.CNG.swc
