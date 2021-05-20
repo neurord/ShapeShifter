@@ -6,6 +6,8 @@ shape_shifter is a morphology converter which takes in neuron morphology files (
 
 shape_shifter will accept .swc or .p morphology files for morphology conversion. Morphology files (.swc) can be attained from the NeuroMorpho repository through http://neuromorpho.org/ 
 
+NOTE: shape_shifter has only been tested on swc morphologies with 3 point somata and .p files with one point somata
+
 **shape_shifter usage**
 
  Input:
@@ -39,7 +41,7 @@ Ideal Usage Scenario
 NeuroMorpho morphology files often inaccurate compartment (node) diameters.
 To calculate diameter from morphology feature values:
 
-run morph_feature_extract.py to calculate feature values from .swc morphology files
+A. run morph_feature_extract.py to calculate feature values from .swc morphology files
 
 + requires Python 2 for btmorph (https://btmorph.readthedocs.io/) to calculate feature values
 
@@ -50,11 +52,11 @@ run morph_feature_extract.py to calculate feature values from .swc morphology fi
   - Output:
   - filename_extract.txt
 
-run morph_feature_analysis.py to compare features and create model equations
+B. run morph_feature_analysis.py to compare features and create model equations
 
-+ _extract.txt file(s) placed in original folder with .swc morphologies
-+ will require user analysis of feature plots/correlations and specified features used in model equations within .py file
-
++ change binary variables to True generate sets of graphs: df_corr, parameter_plots, corr_matrices, final_predictions, xcorr, rall_test
++ change hist_features from [] to list of features to generate histograms
+ 
   - Input:
   ```
   python3 morph_feature_analysis.py --path /path/to/folder_with_swc_extract_files --seed integer --train_test npy_file
@@ -63,34 +65,38 @@ run morph_feature_analysis.py to compare features and create model equations
   - --train_test allows you to specify the npy file with dictionary of training and testing files to reproduce the results in Reed and Blackwell 2021
   
   - Output:
-  - multiple feature and correlation plots (.png), model.txt
+  - multiple feature and correlation plots (.png), archive_model.txt
   
-run shape_shifter.py through type radii to predict new radius for selected morphology 
+C. run shape_shifter.py through type radii to predict new radius for selected morphology 
 
-+ .swc morphology file(s) and _extract.txt file(s) will need to be copied into shape_shifter repository
++ .swc morphology file(s) and _extract.txt file(s) need to be in same directory
 + by default, will print multiple versions of morphology file with original diameter (org), predicted diameter (pred), predicted diameter including original inital diameters (pred_i)
++ archive_model.txt is the output file from morph_feature_analysis.py
 
  - Input:   
  ``` 
- python shape_shifter.py --file morphology_file.swc --type radii --model model.txt
+ python shape_shifter.py --file morphology_file.swc --type radii --model archive_model.txt
  ```
  - Ouput:
  - morphology_file_org.p, morphology_file_pred.p, morphology_file_pred_i.p
  
-run shape_shifter.py again through type condense to combine similar compartments together for future simulation
+D. Optionally, run shape_shifter.py again through type condense to combine similar compartments together for future simulation
 
 + can also pass additional parameters i.e. f (frequency) and radius difference from optional arguments above
++ can run shape_shifter.py to reduce number of compartments for any .p file, independent of diameter predictions
  
  - Input:   
  ``` 
- python shape_shifter.py --file morphology_file_pred.p --type condense --f 100 --rad_diff 0 
+ python shape_shifter.py --file any_morphology_file.p --type condense --f 100 --rad_diff 0 
  ```
  - Ouput:
- - morphology_file_pred_condensed.p
+ - morphology_file_condensed.p
+
+By default, shape_shifter will change 3-pt soma to 1-pt soma in morphology, unless greater than 3 soma nodes are present. shape_shifter will only alter dendritic compartments in morphology and maintain original size, shape, length, and diameter of soma nodes (unless 3-pt soma).
+
 
 CVAPP - Description
 ============
-By default, shape_shifter will change 3-pt soma to 1-pt soma in morphology, unless greater than 3 soma nodes are present. shape_shifter will only alter dendritic compartments in morphology and maintain original size, shape, length, and diameter of soma nodes (unless 3-pt soma).
 
 If wanting to visualize morphology or change soma compartments manually, cvapp is provided in this repository. We strongly recommend that the 1st three soma lines in the cvapp output file be combined into a single coma compartment by hand prior to running shape_shifter, because cvapp output of neuromorpho files typically has 3 soma compartments, with the first, parent compartment (which cannot be eliminated by shape_shifter) having zero size. In addition, you may need to remove blank lines from the .p file to avoid error messages.
 
