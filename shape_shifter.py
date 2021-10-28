@@ -87,7 +87,7 @@ class morph:
                 copy_lines = []
                 lines = open(input_file, 'r').readlines()
                 for line in lines:                      #avoid comment lines
-                    if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#':
+                    if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#' and line[0] != ' ':
                         copy_line = line.split()
                         for x in range(2,6):            #change certain values to floats for calculations
                                 copy_line[x] = float(copy_line[x])
@@ -278,14 +278,13 @@ def to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,
                 if info:
                         print ('not condensing',len(condense),Ltot, line[CHILD], "rad", rad_diff,delta_rad)
         return condense, Ltot, surface_tot
-'''
 def branch_comp(linelist):
         parents = [line[PARENT] for line in linelist] #create a list of just parents
         parent_count = collections.Counter(parents)   #create dictionary giving number of times each parent occurs
         branch_points = [line[CHILD] for line in linelist if parent_count[line[CHILD]]>1] #set of parents that appear more than once
         #print('branch points', branch_points)
         return branch_points, parents
-
+'''
 def end_comp(linelist, parents):
         unique_parents=set(parents) #set() eliminates duplicate parents
         children=[line[CHILD] for line in linelist] #create a list of children
