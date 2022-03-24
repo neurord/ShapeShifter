@@ -27,18 +27,21 @@ parser.add_argument("--file")
 args = parser.parse_args()
 filename = args.file
 
-copy_lines = []; newlines = []; parlist = []
+data_lines = []; newlines = []; parlist = []
+comment_lines=[]
 lines = open(filename, 'r').readlines()
 
 #copies intended values for .pfile from .swcfile into temp. list
 for line in lines:
     if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#':
         copy_line = line.split()
-        copy_lines.append(copy_line)
+        data_lines.append(copy_line)
+    else:
+        comment_lines.append(line)
 
 #list of parent values
 for x in range(5):
-    parlist.append(list(zip(*copy_lines))[x])
+    parlist.append(list(zip(*data_lines))[x])
 
 out_name = filename.split('.swc')[0] + 'convert.p'
 outfile = open(out_name,'w')
@@ -47,9 +50,11 @@ outfile.write(filename + '\n')
 outfile.write('*Modified to .p file on : ')
 outfile.write(str(datetime.datetime.now()) + '\n')
 outfile.write('\n')
+for line in comment_lines:
+    outfile.write(line)
 
 #rearranges values for .p format
-for num,line in enumerate(copy_lines):
+for num,line in enumerate(data_lines):
     newline = line[:6]
     newline[0] = (str(line[0]) + '_' + str(line[1]))
     if num == 0: #soma line always first in .swc file, unique parent-type 'none'
@@ -58,13 +63,13 @@ for num,line in enumerate(copy_lines):
         parent_index = parlist[0].index(line[6])  #parlist[0] refers to parent location of comp at line[6]
         parent_type = parlist[1][parent_index]
         for x in range(2,5):
-            newline[x] = round(float(copy_lines[num][x]) - float(parlist[x][parent_index]),4)
+            newline[x] = round(float(data_lines[num][x]) - float(parlist[x][parent_index]),4)
         newline[1] = str(line[6]) + '_' + str(parent_type)
     newline[5] = round(float(newline[5])*2,4) #.p file format takes diameter values instead of radius
     write_line = [str(val) for val in newline]
     write_line = ' '.join(write_line) #converts from list of strings to single string
     outfile.write(write_line + '\n')
 
-print('Converted ' + str(len(copy_lines)) + ' compartments from original file : ' + str(filename))
+print('Converted ' + str(len(data_lines)) + ' compartments from original file : ' + str(filename))
 print('Modified file created : ' + str(out_name))
 outfile.close()
