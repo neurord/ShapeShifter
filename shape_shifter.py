@@ -71,6 +71,7 @@ import numpy as np
 from scipy.stats import pearsonr
 from extract_dynamic import create_dict
 import matplotlib.pyplot as plt
+import datetime
 
 debug=0   #default is 0
 info=0    #default is 1
@@ -79,30 +80,33 @@ CHILD = 0; PARENT = 1; X = 2; Y = 3; Z = 4; DIA = 5; COMPLEN = 6; END_DIS = 7
 class morph:
         
         def __init__(self,input_file):
-                self.linelist = self.read_file(input_file)
+                self.linelist,self.comments = self.read_file(input_file)
                 self.soma_count()
                 self.remove_zeros()
                
         def read_file(self,input_file):                 #read either .swc or .p morphology file and convert to .p if needed for morph-changes
-                copy_lines = []
+                data_lines = [];comment_lines=[]
                 lines = open(input_file, 'r').readlines()
                 for line in lines:                      #avoid comment lines
-                    if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#' and line[0] != ' ':
+                    if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#':
                         copy_line = line.split()
                         for x in range(2,6):            #change certain values to floats for calculations
                                 copy_line[x] = float(copy_line[x])
-                        copy_lines.append(copy_line)
+                        data_lines.append(copy_line)
+                    else:
+                        comment_lines.append(line)
                         
                 _,extension = os.path.splitext(input_file)
 
                 if extension == '.p': #default file format for morph-changes
-                        return copy_lines
+                        comment_lines.append('// Converted from .swc to .p on '+str(datetime.datetime.now()) + '\n')
+                        return data_lines,comment_lines
                         
-                elif extension == '.swc': #change to .p file format
+                elif extension == '.swc': #change to .p file format, same coordinates as .swc file
                         newlines = []; parlist = []
                         for x in range(5):
-                                parlist.append(list(zip(*copy_lines))[x]) #list of parent values
-                        for num,line in enumerate(copy_lines):            #.p file slightly different order/values to .swc
+                                parlist.append(list(zip(*data_lines))[x]) #list of parent values
+                        for num,line in enumerate(data_lines):            #.p file slightly different order/values to .swc
                             newline = line[:6]
                             newline[0] = (str(line[0]) + '_' + str(line[1]))
                             if num == 0:                                  #soma is always first line, with unique 'none' in .swc
@@ -113,7 +117,7 @@ class morph:
                                 newline[1] = str(line[6]) + '_' + str(parent_type)
                             newline[5] = round(newline[5]*2,4)     #.p file format takes diameter values instead of radius
                             newlines.append(newline)
-                        return newlines
+                        return newlines,comment_lines
 
         def soma_count(self):                            #count number of soma nodes, usually 3-pt or 1-pt
                 soma_start = self.linelist[0]            #by default, the first soma node should connect to all other nodes
@@ -278,6 +282,7 @@ def to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,
                 if info:
                         print ('not condensing',len(condense),Ltot, line[CHILD], "rad", rad_diff,delta_rad)
         return condense, Ltot, surface_tot
+
 def branch_comp(linelist):
         parents = [line[PARENT] for line in linelist] #create a list of just parents
         parent_count = collections.Counter(parents)   #create dictionary giving number of times each parent occurs
@@ -301,14 +306,23 @@ def calc_enddis(dis_to_end, par_comp, line, ending = 0):
         end_dis = dis_to_end
         return dis_to_end, par_comp, end_dis
 
+def write_comments(fileptr,m):
+        relative=False
+        for line in m.comments:
+                if line.startswith('*relative'):
+                        relative=True
+                fileptr.write(line)
+        if not relative:
+                fileptr.write('*relative' + '\n')
 
-def condenser(m, type1, max_len, lambda_factor, rad_diff):
+def condenser(m, type1, max_len, lambda_factor, h):
         #num_comps=0
         ######## type = '0' removes 0 length compartments, this is done in the class, so just write file
         filename,_ = os.path.splitext(h.file)
         if(type1 == "0"):
                 removed = open(filename + '_removed.p','w')
-                removed.write('*relative' + '\n')
+                m.comments.append('// Modified by removing zero size segments on '+str(datetime.datetime.now()) + '\n')
+                write_comments(removed,m)
                 for line in m.linelist:
                         write_file(removed,line)
                 removed.close()
@@ -356,7 +370,13 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 #print(m.linelist)
                 #print('Original Compartments : ' + len(m.linelist[0]))
                 condensed = open(filename + '_condensed.p','w')
-                condensed.write('*relative' + '\n')
+                m.comments.append('// Modified by removing zero segs and condensing short segments on '+str(datetime.datetime.now()) + '\n')
+                m.comments.append('// Used parameters: lambda_factor='+str(lambda_factor)+',rad_diff='+str(h.rad_diff)+'\n')
+                m.comments.append('*set_global RA '+str(h.ri)+'\n')
+                m.comments.append('*set_global RM '+str(h.rm)+'\n')
+                m.comments.append('*set_global cm '+str(h.cm)+'\n')
+                write_comments(condensed,m)
+
                 Ltot = 0; surface_tot = 0; condense = [] #list to hold compartments to be condensed
                 for num,line in enumerate(m.linelist):
                         comp1 = line
@@ -375,7 +395,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                         #rad_diff default is 0.1, max_len default is 0.1, see parameters at bottom
                         if info:
                                 print ('comp1', comp1[CHILD], comp1[PARENT], 'comp2', comp2[CHILD], comp2[PARENT])
-                        if(delta_rad <= rad_diff and comp2[PARENT]==comp1[CHILD] and tot_len < max_len and comp1[CHILD] not in branch_points):
+                        if(delta_rad <= h.rad_diff and comp2[PARENT]==comp1[CHILD] and tot_len < max_len and comp1[CHILD] not in branch_points):
                                 print('***comps to be condensed: ', comp1[CHILD],comp2[CHILD], '***')  #branch point list has to be created before this point
                                 if info:
                                         print('delta_rad <= rad_diff for :', 'comp1', comp1, 'comp2', comp2)
@@ -393,7 +413,7 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                                 Ltot=Ltot+len_comp2
                                 surface_tot=surface_tot+(math.pi * comp2[DIA] * length2)    
                         else:
-                                condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,comp2,condensed)
+                                condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,h.rad_diff,delta_rad,line,comp2,condensed)
                                 
                 #temp_name = m.filename.split('.swc')[0] + '_condense.swc'
                 #print('Created : ' + m.filename  )#+ ' with ' + len(m.linelist) + ' Condensed Compartments')
@@ -467,7 +487,10 @@ def condenser(m, type1, max_len, lambda_factor, rad_diff):
                 zdia2_file = open(filename + '_zdia2.p','w')
                 
                 for fname in [org_file,pred_file,pred_i_file,zdia1_file,zdia2_file]:
-                        fname.write('*relative' + '\n')
+                        m.comments.append('// Modified by predicting radius on '+str(datetime.datetime.now()) + '\n')
+                        m.comments.append('// radii predicted using '+h.model + '\n')
+                        write_comments(fname,m)
+                        #fname.write('*relative' + '\n')
 
                 for num,line in enumerate(m.linelist):
                         if num >= soma_count:             
@@ -531,4 +554,4 @@ if __name__ == '__main__':
         lambd_factor=calc_lambda(h.type, h.rm, h.ri, h.cm, h.f)
         #print('params', h, 'lambda', lambd_factor)
         #Optionally, can condense multiple comps into one, expand large comp into multiple, or assign radii when there are none
-        condenser(newmorph, h.type, h.max_len, lambd_factor, h.rad_diff)
+        condenser(newmorph, h.type, h.max_len, lambd_factor, h)
