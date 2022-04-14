@@ -35,12 +35,24 @@ def swc_to_p(data_lines,parlist):
             parent_index = parlist[0].index(line[6])  #parlist[0] refers to parent location of comp at line[6]
             parent_type = parlist[1][parent_index]
             for x in range(2,5):
-                newline[x] = round(float(data_lines[num][x]) - float(parlist[x][parent_index]),4) #convert to relative coordinates
+                #convert to relative coordinates, see https://github.com/INCF/swc-specification
+                newline[x] = round(float(data_lines[num][x]) - float(parlist[x][parent_index]),4) 
             newline[1] = str(line[6]) + '_' + str(parent_type)
         newline[5] = round(float(newline[5])*2,4) #.p file format takes diameter values instead of radius
         newlines.append(newline)
     return newlines
 
+def read_data_comments(lines):
+    #copies intended values for .pfile from .swcfile into list
+    data_lines = []
+    comment_lines=[]
+    for line in lines:
+        if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#':
+            copy_line = line.split()
+            data_lines.append(copy_line)
+        else:
+            comment_lines.append(line) #may need to replace # with // depending on moose
+    return data_lines,comment_lines
 
 if __name__ == '__main__':
 
@@ -49,24 +61,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
     filename = args.file
 
-    data_lines = []
-    parlist = []
-    comment_lines=[]
-
     lines = open(filename, 'r').readlines()
-
-    #copies intended values for .pfile from .swcfile into list
-    for line in lines:
-        if line[0] !='*' and line[0] !='/' and line[0] != '\n' and line[0] != '\r' and line[0] != '#':
-            copy_line = line.split()
-            data_lines.append(copy_line)
-        else:
-            comment_lines.append(line)
-
-    comment_lines.append('// Original .swc file : '+filename + '\n')
-    comment_lines.append('// Converted from .swc to .p file on : '+str(datetime.datetime.now()) + '\n')
+    data_lines,comment_lines=read_data_comments(lines)
+    comment_lines.append('# Original .swc file : '+filename + '\n')
+    comment_lines.append('# Converted from .swc to .p file on : '+str(datetime.datetime.now()) + '\n')
 
     #list of parent values
+    parlist = []
     for x in range(5):
         parlist.append(list(zip(*data_lines))[x])
 
@@ -83,7 +84,7 @@ if __name__ == '__main__':
     for line in newlines:
         write_line = ' '.join([str(val) for val in line]) #converts from list of strings to single string
         outfile.write(write_line + '\n')
+    outfile.close()
 
     print('Converted ' + str(len(data_lines)) + ' compartments from original file : ' + str(filename))
     print('Modified file created : ' + str(out_name))
-    outfile.close()
