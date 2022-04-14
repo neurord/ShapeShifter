@@ -101,7 +101,7 @@ class morph:
                          return data_lines,comment_lines
                         
                 elif extension == '.swc': #change to .p file format, same coordinates as .swc file
-                        comment_lines.append('// Converted from .swc to .p on '+str(datetime.datetime.now()) + '\n')
+                        comment_lines.append('# Converted from .swc to .p on '+str(datetime.datetime.now()) + '\n')
                         from convert_swc_pfile import swc_to_p
                         parlist = []
                         for x in range(5):
@@ -315,7 +315,7 @@ def condenser(m, type1, max_len, lambda_factor, h):
         filename,_ = os.path.splitext(h.file)
         if(type1 == "0"):
                 removed = open(filename + '_removed.p','w')
-                m.comments.append('// Modified by removing zero size segments on '+str(datetime.datetime.now()) + '\n')
+                m.comments.append('# Modified by removing zero size segments on '+str(datetime.datetime.now()) + '\n')
                 write_comments(removed,m)
                 for line in m.linelist:
                         write_file(removed,line)
@@ -364,8 +364,8 @@ def condenser(m, type1, max_len, lambda_factor, h):
                 #print(m.linelist)
                 #print('Original Compartments : ' + len(m.linelist[0]))
                 condensed = open(filename + '_condensed.p','w')
-                m.comments.append('// Modified by removing zero segs and condensing short segments on '+str(datetime.datetime.now()) + '\n')
-                m.comments.append('// Used parameters: lambda_factor='+str(lambda_factor)+',rad_diff='+str(h.rad_diff)+'\n')
+                m.comments.append('# Modified by removing zero segs and condensing short segments on '+str(datetime.datetime.now()) + '\n')
+                m.comments.append('# Used parameters: lambda_factor='+str(lambda_factor)+',rad_diff='+str(h.rad_diff)+'\n')
                 m.comments.append('*set_global RA '+str(h.ri)+'\n')
                 m.comments.append('*set_global RM '+str(h.rm)+'\n')
                 m.comments.append('*set_global cm '+str(h.cm)+'\n')
@@ -481,8 +481,8 @@ def condenser(m, type1, max_len, lambda_factor, h):
                 zdia2_file = open(filename + '_zdia2.p','w')
                 
                 for fname in [org_file,pred_file,pred_i_file,zdia1_file,zdia2_file]:
-                        m.comments.append('// Modified by predicting radius on '+str(datetime.datetime.now()) + '\n')
-                        m.comments.append('// radii predicted using '+h.model + '\n')
+                        m.comments.append('# Modified by predicting radius on '+str(datetime.datetime.now()) + '\n')
+                        m.comments.append('# radii predicted using '+h.model + '\n')
                         write_comments(fname,m)
                         #fname.write('*relative' + '\n')
 
