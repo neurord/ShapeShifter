@@ -34,9 +34,25 @@ type can be:
   - can specify model.txt (--model) to pass in feature equations for use in type radii (see Ideal Usage Scenario)
   
 change info or debug parameter to get more or less information while running program
-           
 
-Ideal Usage Scenario
+Utility Files
+============
+
+convert_swc_pfile.py
+
+	- will convert from swc format to .p format for use with the GENESIS and MOOSE simulation software
+	- new name for each point/node:  node number + '_'+ node type
+	- converts from absolute to relative coordinates (https://github.com/INCF/swc-specification)
+
+Input:
+ ``` 
+ python3 convert_swc_pfile.py --file 'filename.swc'
+ ```
+ Output:
+ filenameconvert.p
+
+
+Calculating new diameter for neuron reconstructions
 ============
 NeuroMorpho morphology files often inaccurate compartment (node) diameters.
 To calculate diameter from morphology feature values:
