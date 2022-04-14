@@ -64,7 +64,6 @@ from __future__ import print_function, division
 import sys
 import os
 import glob
-import math
 import argparse
 import collections
 import numpy as np
@@ -99,24 +98,16 @@ class morph:
                 _,extension = os.path.splitext(input_file)
 
                 if extension == '.p': #default file format for morph-changes
-                        comment_lines.append('// Converted from .swc to .p on '+str(datetime.datetime.now()) + '\n')
-                        return data_lines,comment_lines
+                         return data_lines,comment_lines
                         
                 elif extension == '.swc': #change to .p file format, same coordinates as .swc file
-                        newlines = []; parlist = []
+                        comment_lines.append('// Converted from .swc to .p on '+str(datetime.datetime.now()) + '\n')
+                        from convert_swc_pfile import swc_to_p
+                        parlist = []
                         for x in range(5):
                                 parlist.append(list(zip(*data_lines))[x]) #list of parent values
-                        for num,line in enumerate(data_lines):            #.p file slightly different order/values to .swc
-                            newline = line[:6]
-                            newline[0] = (str(line[0]) + '_' + str(line[1]))
-                            if num == 0:                                  #soma is always first line, with unique 'none' in .swc
-                                newline[1] = 'none'
-                            else:
-                                parent_index = parlist[0].index(line[6])  #parlist[0] refers to parent location of comp at line[6]
-                                parent_type = parlist[1][parent_index]
-                                newline[1] = str(line[6]) + '_' + str(parent_type)
-                            newline[5] = round(newline[5]*2,4)     #.p file format takes diameter values instead of radius
-                            newlines.append(newline)
+                        newlines=swc_to_p(data_lines,parlist)
+                        
                         return newlines,comment_lines
 
         def soma_count(self):                            #count number of soma nodes, usually 3-pt or 1-pt
@@ -195,17 +186,16 @@ class morph:
                                 print('fixed line', counter ,line)
                         return line
 
-
-
 def calc_lambda (type1, RM, RI, CM, F):
         tm = RM * CM #time constant
-        dc_factor = math.sqrt(RM/(RI*4.0))*1000 #1000 is for unit conversion to microns 
-        partial_ac= 2.0*math.pi*F*tm 
-        ac_factor = dc_factor * math.sqrt(2.0/(1.0+math.sqrt(1.0+math.pow(partial_ac,2.0))))
+	#Lambda when working with diameter of cables.  Use 2.0 if working with radius
+        dc_factor = np.sqrt(RM/(RI*4.0))*1000 #1000 is for unit conversion to microns 
+        partial_ac= 2.0*np.pi*F*tm 
+        ac_factor = dc_factor * np.sqrt(2.0/(1.0+np.sqrt(1.0+partial_ac**2.0)))
         return ac_factor 
 
 def calc_electrotonic_len(line,factor):
-        lamb = factor * math.sqrt(float(line[DIA])) #calculates ac or dc lambda from compartment radius
+        lamb = factor * np.sqrt(float(line[DIA])) #calculates ac or dc lambda from compartment radius
         if debug:
                 print('    calc_len comp %s lambda=%.1f len=%.3f L=%.5f' % (line[CHILD], lamb, line[COMPLEN], line[COMPLEN]/lamb))
         return line[COMPLEN]/lamb
@@ -216,10 +206,14 @@ def write_file(output, line):
         output.write(write_line + '\n')   #writes every node as new line
 
 def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
-        diameter=math.pow(surface_tot/(Ltot*np.pi*lamb_factor),(2/3.))
+        #Equations from Hendrickson J Comput Neurosci 2011
+        #surface_tot=pi*diam*len
+        #Ltot=len*sqrt((4*Ra)/(Rm*diam))
+        #solve simultaneously for diameter and length
+        diameter=(surface_tot/(Ltot*np.pi*lamb_factor))**(2/3.)
         l=surface_tot/(np.pi*diameter)
         if debug:
-                print('TSA: dia %.5f, l=%.2f tsa=%.1f Ltot=%.5f' % (diameter, l, np.pi*diameter*l,l/(lamb_factor*math.sqrt(diameter))))
+                print('TSA: dia %.5f, l=%.2f tsa=%.1f Ltot=%.5f' % (diameter, l, np.pi*diameter*l,l/(lamb_factor*np.sqrt(diameter))))
         x = 0.0; y = 0.0; z = 0.0
         #total distance in x, y and z.  
         for comp in condense:
@@ -227,22 +221,22 @@ def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
         if debug:
                 print ('xtot %.3f ytot %.3f ztot %.3f'%(x, y, z))
         theta = np.arctan(y/x) if x > 0 else 0
-        phi = np.arccos(z/math.sqrt(x*x+y*y+z*z)) if (x>0 or y>0 or z>0) else 0
+        phi = np.arccos(z/np.sqrt(x*x+y*y+z*z)) if (x>0 or y>0 or z>0) else 0
         '''
         if (x > 0) :
                 theta = np.arctan(y/x)
         else:
                 theta = 0
         if (x>0 or y>0 or z>0):
-                phi = np.arccos(z/math.sqrt(x*x+y*y+z*z))
+                phi = np.arccos(z/np.sqrt(x*x+y*y+z*z))
         else:
                 phi = 0
         '''
         if debug:
                 print ('theta %.4f phi %.4f ' %(theta,phi))
-        x = np.round(l*math.cos(theta)*math.sin(phi),3)
-        y = np.round(l*math.sin(theta)*math.sin(phi),3)
-        z = np.round(l*math.cos(phi),3)
+        x = np.round(l*np.cos(theta)*np.sin(phi),3)
+        y = np.round(l*np.sin(theta)*np.sin(phi),3)
+        z = np.round(l*np.cos(phi),3)
         return str(x),str(y),str(z),str(np.round(diameter,3))
 
 def subdivide_comp(newline,segs):  #only for type expand --> non-working version
@@ -339,7 +333,7 @@ def condenser(m, type1, max_len, lambda_factor, h):
                         print ("max_len", max_len, "L", L_comp)
                         if L_comp > max_len:
                                 print('Adding segments to: ', line[CHILD])
-                                segs=int(math.ceil(L_comp/max_len))
+                                segs=int(np.ceil(L_comp/max_len))
                                 newlines=subdivide_comp(line,segs)
                                 for seg in newlines:
                                         print('Segment added: ', seg[CHILD])
@@ -399,19 +393,19 @@ def condenser(m, type1, max_len, lambda_factor, h):
                                 print('***comps to be condensed: ', comp1[CHILD],comp2[CHILD], '***')  #branch point list has to be created before this point
                                 if info:
                                         print('delta_rad <= rad_diff for :', 'comp1', comp1, 'comp2', comp2)
-                                length1 = math.sqrt(comp1[X]**2 + comp1[Y]**2 + comp1[Z]**2)
-                                length2 = math.sqrt(comp2[X]**2 + comp2[Y]**2 + comp2[Z]**2)
+                                length1 = np.sqrt(comp1[X]**2 + comp1[Y]**2 + comp1[Z]**2)
+                                length2 = np.sqrt(comp2[X]**2 + comp2[Y]**2 + comp2[Z]**2)
                                 #if the radii are almost the same and comp2 is attached to comp1
                                 #if this is last line of file, comp2=comp1, thus comp2[1] != comp1[0], skip down to condensing or writing file
                                 if len(condense) == 0:
                                         #if this is 1st compartment of a set, add it
                                         condense.append(comp1)
                                         Ltot = len_comp1
-                                        surface_tot = math.pi * comp1[DIA] * length1
+                                        surface_tot = np.pi * comp1[DIA] * length1
                                 #always add the 2nd compartment to set of comartments to be condensed
                                 condense.append(comp2)
                                 Ltot=Ltot+len_comp2
-                                surface_tot=surface_tot+(math.pi * comp2[DIA] * length2)    
+                                surface_tot=surface_tot+(np.pi * comp2[DIA] * length2)    
                         else:
                                 condense, Ltot, surface_tot = to_condense(condense,surface_tot,Ltot,lambda_factor,h.rad_diff,delta_rad,line,comp2,condensed)
                                 
