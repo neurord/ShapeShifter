@@ -40,9 +40,9 @@ Utility Files
 
 convert_swc_pfile.py
 
-	- will convert from swc format to .p format for use with the GENESIS and MOOSE simulation software
-	- new name for each point/node:  node number + '_'+ node type
-	- converts from absolute to relative coordinates (https://github.com/INCF/swc-specification)
+- will convert from swc format to .p format for use with the GENESIS and MOOSE simulation software
+- new name for each point/node:  node number + '_'+ node type
+- converts from absolute to relative coordinates (https://github.com/INCF/swc-specification)
 
 Input:
  ``` 
