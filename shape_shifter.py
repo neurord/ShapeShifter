@@ -71,6 +71,7 @@ from scipy.stats import pearsonr
 from extract_dynamic import create_dict
 import matplotlib.pyplot as plt
 import datetime
+import copy
 
 debug=0   #default is 0
 info=0    #default is 1
@@ -239,23 +240,28 @@ def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
         z = np.round(l*np.cos(phi),3)
         return str(x),str(y),str(z),str(np.round(diameter,3))
 
-def subdivide_comp(newline,segs):  #only for type expand --> non-working version
-        newlen = 0; lineset = []
+def subdivide_comp(line,segs):  #only for type expand --> non-working version
+        lineset = []
         print ("subdivide", line[CHILD], "x,y,z,len", line[X], line[Y], line[Z], line[COMPLEN], "into", segs, "segments")
-        for j in [X,Y,Z]: 
+        newline=copy.copy(line) #1. initialize newline to be the same as original line
+        for j in [X,Y,Z]: #2. change the x,y,z coordinates to be original values / number of segments
                 newline[j]=np.round(line[j]/segs,5) 
-        seg_length = np.sqrt((newline[X])**2 + (newline[Y])**2 + (newline[Z])**2) 
+        seg_length = segs*np.sqrt((newline[X])**2 + (newline[Y])**2 + (newline[Z])**2) #3. calculate segment length of the new line
         for i in range(segs):
-                lineset.append(line)
-                if i > 0:
+                lineset.append(copy.copy(newline))
+                if i > 0: #update the parent of each new line, and add a number to the name of the segment
                         lineset[i][PARENT] = lineset[i-1][CHILD]
-                        lineset[i][CHILD] = lineset[0] + str(i)
-                newlen=newlen+seg_length
+                        if '_' in lineset[i][CHILD]: #naming convention for swc files - unlikely to subdivide
+                                lineset[i][CHILD]=lineset[i][CHILD].split()[0]+chr(i+97)+lineset[i][CHILD].split()[1]
+                        elif '[' in lineset[i][CHILD]: #array - need to re-order segments
+                                lineset[i][CHILD] = lineset[i][CHILD] + str(i)  #FIXME
+                        else:
+                                lineset[i][CHILD] = lineset[i][CHILD] + chr(i+64) #captial letter
                 #save new parent_dict to connect subsequent compartment to new segmented one either here or in type = 'expand'
         if info:
                 for i in range(segs):
-                        print ("new seg", i, myname[i],PARENT[i], newcomp[i])
-                print ("total length", newlen, "seg", seg_length )
+                        print ("new seg", i, lineset[i])
+                print ("total length", seg_length, "single seg", seg_length/segs,'old seg len', np.sqrt((line[X])**2 + (line[Y])**2 + (line[Z])**2) )
         return lineset
 
 def to_condense(condense,surface_tot,Ltot,lambda_factor,rad_diff,delta_rad,line,comp2,outfile):
@@ -327,35 +333,42 @@ def condenser(m, type1, max_len, lambda_factor, h):
                 #Expands linelist to include new created segments
                 
                 new_par = {} #holds all compartments whose parent needs to change with included segments
-                newlinelist = []
+                newlinelist = [];added_lines=[]
                 for num,line in enumerate(m.linelist):
                         L_comp = calc_electrotonic_len(line,lambda_factor)
-                        print ("max_len", max_len, "L", L_comp)
-                        if L_comp > max_len:
+                        print ("max_len", max_len, "L", L_comp, 'of', line[CHILD])
+                        if L_comp > max_len and line[CHILD] != 'soma' and line[CHILD] != '1_1':
                                 print('Adding segments to: ', line[CHILD])
                                 segs=int(np.ceil(L_comp/max_len))
                                 newlines=subdivide_comp(line,segs)
-                                for seg in newlines:
-                                        print('Segment added: ', seg[CHILD])
+                                for ii,seg in enumerate(newlines):
+                                        newlinelist.append(seg)
+                                        if ii>0:
+                                                added_lines.append(seg)
+                                                print('Segment added: ', seg[CHILD])
                                 new_par[m.linelist[num][CHILD]] = newlines[-1][CHILD]
-                                newlinelist.append(newlines)
                         else:
                                 newlinelist.append(line)
                         if info:
                                 print ("OK", line)
 
-                #Replaces parent-child of any compartment whose parent was expanded
-                print(len(new_par),new_par)
+                ##### Replaces parent-child of any compartment whose parent was expanded
+                print('new parent dictionary',len(new_par),new_par)
                 print(len(newlinelist), newlinelist)
                 
-                #for line in newlinelist:                #change parent-child here
-                #m.replace_parent[comp1[0]]=myname[-1] maybe NOT call replace par as it would change ALL subsequent parent_child connections
-                #ONLY want to change the final newlines comp to original subsequent one
-                #must replace parent of sudsequent compartment with last segmented comp.
-                #maybe do a search here for the added comp. maybe outside this for loop too?
-                #maybe do the re.search here for ANY subsequent compartment that would possibly connect
-                #maybe add the expand_list to correct position into linelist outside for loop
-                #write statement for entire line_list
+                for line in newlinelist:                #change parent-child here
+                        if line[PARENT] in new_par.keys():
+                                if line not in added_lines:
+                                        line[PARENT]=new_par[line[PARENT]]
+
+                ####### write to file
+                expanded = open(filename + '_expanded.p','w')
+                m.comments.append('# Modified by expanding line segments into multiple segments on '+str(datetime.datetime.now()) + '\n')
+                m.comments.append('# Used parameters: lambda_factor='+str(lambda_factor)+'\n')
+                write_comments(expanded,m)
+                for line in newlinelist:
+                        write_file(expanded,line)
+                expanded.close()
         
         ######## type = condense condenses branches with similar radius and combined electronic length < 0.1 lambda
         if (type1 == "condense"):    #if rad_diff = 0, only condenses branches with same radius
@@ -534,13 +547,13 @@ if __name__ == '__main__':
         parser.add_argument('--cm', default=cm, type=float)
         parser.add_argument('--f', default=f, type=float)
         parser.add_argument('--max_len', default=max_len, type=float)
-        
+        #ARGS='--file simple.p --type expand'
         try:
-	        args = ARGS.split() #in python: define space-separated ARGS string
-	        do_exit = False
+                args = ARGS.split() #in python: define space-separated ARGS string
+                do_exit = False
         except NameError: #if you are not in python, read in filename and other parameters
-	        args = sys.argv[1:]
-	        do_exit = True
+                args = sys.argv[1:]
+                do_exit = True
         h = parser.parse_args(args)
         newmorph=morph(h.file)
         
