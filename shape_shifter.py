@@ -113,15 +113,20 @@ class morph:
 
         def soma_count(self):                            #count number of soma nodes, usually 3-pt or 1-pt
                 soma_start = self.linelist[0]            #by default, the first soma node should connect to all other nodes
-                soma_nodes = 0
+                self.soma_node_list = []
+                self.soma_nodes = 0   
+                self.other_node_list = []                  
                 for line in self.linelist:               #check for all soma nodes with _1 ending
                         if '_1' in line[0]:
-                                soma_nodes = soma_nodes + 1
-                if soma_nodes == 1:
+                            self.soma_nodes = self.soma_nodes + 1
+                            self.soma_node_list.append(line)
+                        else:
+                             self.other_node_list.append(line)
+                if self.soma_nodes == 1:
                         print('***1-pt soma detected***')
                 
-                if soma_nodes == 3:
-                        print('***3-pt soma detected***') #default 1_1 at coordinates 0,0,0 --> merge to single 1-pt soma 
+                if self.soma_nodes == 3:
+                        print('***3-pt soma detected***') #default 1_1 at coordinates 0,0,0 --> merge to single 1-pt soma
                         comp1 = self.linelist[1]; comp2 = self.linelist[2]
                         check_if_parent = []
                         for num,comp in enumerate(self.linelist):   #remove extra soma nodes which do not connect to others (only visuallizes width)
@@ -136,9 +141,9 @@ class morph:
                                 del self.linelist[1]
                         else:
                                 ('***Multiple soma node connections; possibly check morphology file***') #usually extra 3-pt soma nodes exact diameter equal to soma
-                elif soma_nodes == 2 or soma_nodes > 3:
-                        print('***More than 3-pt soma; possibly check morphology file***') #some morphology files contain multiple soma nodes
-                        
+                elif self.soma_nodes == 2 or self.soma_nodes > 3:
+                    print('***More than 3-pt soma; possibly check morphology file***') #some morphology files contain multiple soma nodes
+                
         def remove_zeros(self): 
                 newlines=[]; parent_dict = {}
                 #Calculate compartment length from XYZ values
@@ -187,6 +192,62 @@ class morph:
                                 print('fixed line', counter ,line)
                         return line
 
+def soma_condense(m,lambda_factor,soma):
+        Lines = m.soma_node_list
+
+        if(soma == "no_change"):
+                print("**no changes to soma**")
+                return
+
+        # creates one point soma for multi-point somas done w/cross-sectional tracing
+        if (soma == "cylinder"):
+                soma1 = Lines[0]
+                len_soma1=calc_electrotonic_len(soma1,lambda_factor)
+                length1 = math.sqrt(soma1[X]**2 + soma1[Y]**2 + soma1[Z]**2)
+                surface_tot_1 = math.pi * soma1[DIA] * length1
+                Ltot = len_soma1
+                surface_tot = surface_tot_1
+                for soma2 in Lines[1:]:
+                    len_soma2=calc_electrotonic_len(soma2,lambda_factor)
+                    length2 = math.sqrt(soma2[X]**2 + soma2[Y]**2 + soma2[Z]**2)
+                    surface_tot_2 = math.pi * soma2[DIA] * length2
+                    surface_tot += surface_tot_2
+                    Ltot += len_soma2
+                x,y,z,diameter=calc_newcomp(Lines,surface_tot,Ltot,lambda_factor)  
+                newcomp = ['1_1', 'None', x, y, z, diameter]   
+
+       # creates one point soma for multi-point somas done w/countour tracing
+        if(soma == "contour"):
+                soma1 = Lines[0]
+                
+                
+                x_max = soma1[X]; y_max = soma1[Y]; z_max = soma1[Z]; dia = []; x_min = 0; y_min = 0; z_min=0
+                dia.append(soma1[DIA])
+                soma2_x = soma1[X] ; soma2_y = soma1[Y]; soma2_z = soma1[Z]
+                for soma2 in Lines[1:]:
+                        # converts from relative to absolute coordinates
+                        soma2_x = soma2_x + soma2[X] ; soma2_y = soma2_y + soma2[Y] ; soma2_z = soma2_z + soma2[Z]
+                        x_max = max(soma2_x,x_max); x_min = min(soma2_x,x_min)
+                        y_max = max(soma2_y,y_max); y_min = min(soma2_y,y_min) 
+                        z_max = max(soma2_z,z_max); z_min = min(soma2_z,z_min)
+                        dia.append(soma2[DIA])
+                print('soma2_x: ', soma2_x,'soma2_y: ', soma2_y, 'soma2_z: ', soma2_z)
+                print('x_max: ', x_max,'y_max: ', y_max, 'z_max: ', z_max)
+                diameter = np.around(np.mean(dia),4)
+                leng = math.sqrt((x_max-x_min)**2 + (y_max-y_min)**2 + (z_max-z_min)**2)                     
+                Ltot = leng/lambda_factor
+                surface_tot = leng * np.pi * diameter
+                x = x_max - x_min; y = y_max - y_min; z = z_max - z_min
+                x,y,z = comp_angle(x,y,z,leng)
+                newcomp = ['1_1', 'None', str(x), str(y), str(z), diameter]
+
+        #adds the dendrites to the list to be written into the file
+        temp = []
+        m.linelist = newcomp
+        temp.append(newcomp)
+        temp.extend(m.other_node_list)
+        m.linelist = temp
+
 def calc_lambda (type1, RM, RI, CM, F):
         tm = RM * CM #time constant
 	#Lambda when working with diameter of cables.  Use 2.0 if working with radius
@@ -206,6 +267,17 @@ def write_file(output, line):
         write_line = ' '.join(write_line) #converts from list of strings to single string
         output.write(write_line + '\n')   #writes every node as new line
 
+def comp_angle(x,y,z,l):
+        theta = np.arctan2(y,x) 
+        phi = np.arccos(z/math.sqrt(x*x+y*y+z*z)) if (x>0 or y>0 or z>0) else 0
+        
+        if debug:
+                print ('theta %.4f phi %.4f ' %(theta,phi))
+        x = np.round(l*math.cos(theta)*math.sin(phi),3)
+        y = np.round(l*math.sin(theta)*math.sin(phi),3)
+        z = np.round(l*math.cos(phi),3)
+        return x,y,z
+        
 def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
         #Equations from Hendrickson J Comput Neurosci 2011
         #surface_tot=pi*diam*len
@@ -218,26 +290,12 @@ def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
         x = 0.0; y = 0.0; z = 0.0
         #total distance in x, y and z.  
         for comp in condense:
-                x = np.sqrt(x); y = np.sqrt(y); z = np.sqrt(z)
+                x += comp[X]
+                y += comp[Y]
+                z += comp[Z]
         if debug:
                 print ('xtot %.3f ytot %.3f ztot %.3f'%(x, y, z))
-        theta = np.arctan(y/x) if x > 0 else 0
-        phi = np.arccos(z/np.sqrt(x*x+y*y+z*z)) if (x>0 or y>0 or z>0) else 0
-        '''
-        if (x > 0) :
-                theta = np.arctan(y/x)
-        else:
-                theta = 0
-        if (x>0 or y>0 or z>0):
-                phi = np.arccos(z/np.sqrt(x*x+y*y+z*z))
-        else:
-                phi = 0
-        '''
-        if debug:
-                print ('theta %.4f phi %.4f ' %(theta,phi))
-        x = np.round(l*np.cos(theta)*np.sin(phi),3)
-        y = np.round(l*np.sin(theta)*np.sin(phi),3)
-        z = np.round(l*np.cos(phi),3)
+        x,y,z = comp_angle(x,y,z,l)
         return str(x),str(y),str(z),str(np.round(diameter,3))
 
 def subdivide_comp(line,segs):  #only for type expand --> non-working version
@@ -327,6 +385,14 @@ def condenser(m, type1, max_len, lambda_factor, h):
                         write_file(removed,line)
                 removed.close()
                 print('Removed Zero point Compartments : Created ' + filename + '_removed.p')
+
+        if(type1 == "condense_soma"): #not really needed.  Determine if soma has been condensed, and add comment
+                file = open(filename + '_somacondensed.p','w')
+                file.write('*relative' + '\n')
+                for line in m.linelist:
+                        write_file(file,line)
+                file.close()
+                print('Condensed multi-point soma to a one-point soma : Created ' + filename + '_somacondensed.p')
 
         ####### type = "expand" takes long compartments and subdivides into multiple "segments"  --> in progress non-working version
         if (type1 == "expand"):
@@ -536,8 +602,9 @@ if __name__ == '__main__':
         #set up argument parsers
         parser = argparse.ArgumentParser()
         parser.add_argument('--file')
-        parser.add_argument('--type', choices={'0','condense','expand','radii'}, default='condense') #should default be 0
+        parser.add_argument('--type', choices={'0','condense','expand','radii','condense_soma'}, default='0') #just remove zero size compartments
         #parser.add_argument('--path', type = str) 
+        parser.add_argument('--soma', choices={'no_change','cylinder','contour'}, default = 'no_change')
         parser.add_argument('--model')
         parser.add_argument('--save_as') #will need to reformat file if .swc output desired
         
@@ -560,5 +627,10 @@ if __name__ == '__main__':
         #calculate lambda
         lambd_factor=calc_lambda(h.type, h.rm, h.ri, h.cm, h.f)
         #print('params', h, 'lambda', lambd_factor)
+        
+        #calls soma_condense if # of soma points is greater than 3
+        if newmorph.soma_nodes > 3:
+                soma_condense(newmorph,lambd_factor,h.soma)
+        
         #Optionally, can condense multiple comps into one, expand large comp into multiple, or assign radii when there are none
         condenser(newmorph, h.type, h.max_len, lambd_factor, h)
