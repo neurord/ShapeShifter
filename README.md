@@ -38,18 +38,33 @@ change info or debug parameter to get more or less information while running pro
 Utility Files
 ============
 
-convert_swc_pfile.py
+1. convert_swc_pfile.py
 
 - will convert from swc format to .p format for use with the GENESIS and MOOSE simulation software
 - new name for each point/node:  node number + '_'+ node type
 - converts from absolute to relative coordinates (https://github.com/INCF/swc-specification)
 
-Input:
+- Input:
  ``` 
  python3 convert_swc_pfile.py --file 'filename.swc'
  ```
- Output:
+ - Output:
  filenameconvert.p
+
+
+2. convert_to_swc.py
+
+- will convert from .p format to .swc format 
+- removes node type from node name (only works if p file generated from convert_swc_pfile.py)
+- converts from relative to absolute coordinates (https://github.com/INCF/swc-specification)
+
+
+- Input:
+ ``` 
+ python3 convert_to_swc.py --file 'filename.p'
+ ```
+- Output:
+ filenameconvert.swc
 
 
 Calculating new diameter for neuron reconstructions
