@@ -3,6 +3,7 @@
     Copyright (C) <2016>  <Saivardhan Mada>
     Copyright (C) <2017>  <Avrama Blackwell>
     Copyright (C) <2021>  <Jonathan Reed>
+    Copyright (C) <2022>  <Estiphanos Wodajo>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -94,7 +95,11 @@ class morph:
                                 copy_line[x] = float(copy_line[x])
                         data_lines.append(copy_line)
                     else:
-                        comment_lines.append(line)
+                        if line[0] == '#':
+                                comment_lines.append('//' + line[1:-1])
+                        else:
+                                comment_lines.append(line)
+                        
                         
                 _,extension = os.path.splitext(input_file)
 
@@ -203,14 +208,14 @@ def soma_condense(m,lambda_factor,soma):
         if (soma == "cylinder"):
                 soma1 = Lines[0]
                 len_soma1=calc_electrotonic_len(soma1,lambda_factor)
-                length1 = math.sqrt(soma1[X]**2 + soma1[Y]**2 + soma1[Z]**2)
-                surface_tot_1 = math.pi * soma1[DIA] * length1
+                length1 = np.sqrt(soma1[X]**2 + soma1[Y]**2 + soma1[Z]**2)
+                surface_tot_1 = np.pi * soma1[DIA] * length1
                 Ltot = len_soma1
                 surface_tot = surface_tot_1
                 for soma2 in Lines[1:]:
                     len_soma2=calc_electrotonic_len(soma2,lambda_factor)
-                    length2 = math.sqrt(soma2[X]**2 + soma2[Y]**2 + soma2[Z]**2)
-                    surface_tot_2 = math.pi * soma2[DIA] * length2
+                    length2 = np.sqrt(soma2[X]**2 + soma2[Y]**2 + soma2[Z]**2)
+                    surface_tot_2 = np.pi * soma2[DIA] * length2
                     surface_tot += surface_tot_2
                     Ltot += len_soma2
                 x,y,z,diameter=calc_newcomp(Lines,surface_tot,Ltot,lambda_factor)  
@@ -234,7 +239,7 @@ def soma_condense(m,lambda_factor,soma):
                 print('soma2_x: ', soma2_x,'soma2_y: ', soma2_y, 'soma2_z: ', soma2_z)
                 print('x_max: ', x_max,'y_max: ', y_max, 'z_max: ', z_max)
                 diameter = np.around(np.mean(dia),4)
-                leng = math.sqrt((x_max-x_min)**2 + (y_max-y_min)**2 + (z_max-z_min)**2)                     
+                leng = np.sqrt((x_max-x_min)**2 + (y_max-y_min)**2 + (z_max-z_min)**2)                     
                 Ltot = leng/lambda_factor
                 surface_tot = leng * np.pi * diameter
                 x = x_max - x_min; y = y_max - y_min; z = z_max - z_min
@@ -269,13 +274,13 @@ def write_file(output, line):
 
 def comp_angle(x,y,z,l):
         theta = np.arctan2(y,x) 
-        phi = np.arccos(z/math.sqrt(x*x+y*y+z*z)) if (x>0 or y>0 or z>0) else 0
+        phi = np.arccos(z/np.sqrt(x*x+y*y+z*z)) if (x>0 or y>0 or z>0) else 0
         
         if debug:
                 print ('theta %.4f phi %.4f ' %(theta,phi))
-        x = np.round(l*math.cos(theta)*math.sin(phi),3)
-        y = np.round(l*math.sin(theta)*math.sin(phi),3)
-        z = np.round(l*math.cos(phi),3)
+        x = np.round(l*np.cos(theta)*np.sin(phi),3)
+        y = np.round(l*np.sin(theta)*np.sin(phi),3)
+        z = np.round(l*np.cos(phi),3)
         return x,y,z
         
 def calc_newcomp(condense,surface_tot,Ltot,lamb_factor):
@@ -379,7 +384,7 @@ def condenser(m, type1, max_len, lambda_factor, h):
         filename,_ = os.path.splitext(h.file)
         if(type1 == "0"):
                 removed = open(filename + '_removed.p','w')
-                m.comments.append('# Modified by removing zero size segments on '+str(datetime.datetime.now()) + '\n')
+                m.comments.append('// Modified by removing zero size segments on '+str(datetime.datetime.now()) + '\n')
                 write_comments(removed,m)
                 for line in m.linelist:
                         write_file(removed,line)
@@ -429,8 +434,8 @@ def condenser(m, type1, max_len, lambda_factor, h):
 
                 ####### write to file
                 expanded = open(filename + '_expanded.p','w')
-                m.comments.append('# Modified by expanding line segments into multiple segments on '+str(datetime.datetime.now()) + '\n')
-                m.comments.append('# Used parameters: lambda_factor='+str(lambda_factor)+'\n')
+                m.comments.append('//Modified by expanding line segments into multiple segments on '+str(datetime.datetime.now()) + '\n')
+                m.comments.append('// Used parameters: lambda_factor='+str(lambda_factor)+'\n')
                 write_comments(expanded,m)
                 for line in newlinelist:
                         write_file(expanded,line)
@@ -443,8 +448,8 @@ def condenser(m, type1, max_len, lambda_factor, h):
                 #print(m.linelist)
                 #print('Original Compartments : ' + len(m.linelist[0]))
                 condensed = open(filename + '_condensed.p','w')
-                m.comments.append('# Modified by removing zero segs and condensing short segments on '+str(datetime.datetime.now()) + '\n')
-                m.comments.append('# Used parameters: lambda_factor='+str(lambda_factor)+',rad_diff='+str(h.rad_diff)+'\n')
+                m.comments.append('// Modified by removing zero segs and condensing short segments on '+str(datetime.datetime.now()) + '\n')
+                m.comments.append('// Used parameters: lambda_factor='+str(lambda_factor)+',rad_diff='+str(h.rad_diff)+'\n')
                 m.comments.append('*set_global RA '+str(h.ri)+'\n')
                 m.comments.append('*set_global RM '+str(h.rm)+'\n')
                 m.comments.append('*set_global cm '+str(h.cm)+'\n')
@@ -560,8 +565,8 @@ def condenser(m, type1, max_len, lambda_factor, h):
                 zdia2_file = open(filename + '_zdia2.p','w')
                 
                 for fname in [org_file,pred_file,pred_i_file,zdia1_file,zdia2_file]:
-                        m.comments.append('# Modified by predicting radius on '+str(datetime.datetime.now()) + '\n')
-                        m.comments.append('# radii predicted using '+h.model + '\n')
+                        m.comments.append('// Modified by predicting radius on '+str(datetime.datetime.now()) + '\n')
+                        m.comments.append('//radii predicted using '+h.model + '\n')
                         write_comments(fname,m)
                         #fname.write('*relative' + '\n')
 
