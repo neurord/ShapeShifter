@@ -452,7 +452,7 @@ def condenser(m, type1, max_len, lambda_factor, h):
                 m.comments.append('// Used parameters: lambda_factor='+str(lambda_factor)+',rad_diff='+str(h.rad_diff)+'\n')
                 m.comments.append('*set_global RA '+str(h.ri)+'\n')
                 m.comments.append('*set_global RM '+str(h.rm)+'\n')
-                m.comments.append('*set_global cm '+str(h.cm)+'\n')
+                m.comments.append('*set_global CM '+str(h.cm)+'\n')
                 write_comments(condensed,m)
 
                 Ltot = 0; surface_tot = 0; condense = [] #list to hold compartments to be condensed
